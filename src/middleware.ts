@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
+interface Session {
+  roles?: string[];
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -28,16 +32,27 @@ export async function middleware(request: NextRequest) {
 
   try {
     // Vérifier le token
-    const token = await getToken({
-      req: request as any,
-      secret: process.env.NEXTAUTH_SECRET
-    });
+    const session = await getToken({ req: request }) as Session | null;
 
     // Si pas de token et route protégée, rediriger vers l'API de connexion
-    if (!token) {
+    if (!session) {
       const signInUrl = new URL('/api/auth/signin', request.url);
       signInUrl.searchParams.set('callbackUrl', request.url);
       return NextResponse.redirect(signInUrl);
+    }
+
+    // Protection des routes admin
+    if (request.nextUrl.pathname.startsWith('/admin')) {
+      if (!session.roles?.includes('admin')) {
+        return NextResponse.redirect(new URL('/unauthorized', request.url));
+      }
+    }
+
+    // Protection des routes utilisateur
+    if (request.nextUrl.pathname.startsWith('/dashboard')) {
+      if (!session) {
+        return NextResponse.redirect(new URL('/auth/signin', request.url));
+      }
     }
 
     // Autoriser la requête avec le token

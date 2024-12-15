@@ -29,8 +29,8 @@ export const logSiteCreation = (userId: string, domain: string) => {
   logger.info('Site created', { userId, domain });
 };
 
-export const logWebhookError = (error: Error, payload: any) => {
-  logger.error('Webhook error', { error: error.message, payload });
+export const logWebhookError = (error: unknown, payload: unknown) => {
+  logger.error('Webhook error', { error: error instanceof Error ? error.message : String(error), payload });
 };
 
 export const logBillingUpdate = (userId: string, orderCount: number, amount: number) => {

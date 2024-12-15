@@ -1,63 +1,38 @@
-import mongoose from 'mongoose';
-import { Db } from 'mongodb';
+import { MongoClient, Db } from 'mongodb';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env');
+if (!process.env.MONGODB_URI) {
+  throw new Error('Please add your Mongo URI to .env.local');
 }
 
-type GlobalMongooseType = {
-  conn: typeof mongoose | null;
-  promise: Promise<typeof mongoose> | null;
-};
+const uri = process.env.MONGODB_URI;
+const options = {};
 
-declare global {
-  let mongoose: GlobalMongooseType;
-}
+let client: MongoClient;
+let clientPromise: Promise<MongoClient>;
 
-if (!global.mongoose) {
-  global.mongoose = { conn: null, promise: null };
-}
+if (process.env.NODE_ENV === 'development') {
+  // In development mode, use a global variable so that the value
+  // is preserved across module reloads caused by HMR (Hot Module Replacement).
+  let globalWithMongo = global as typeof globalThis & {
+    _mongoClientPromise?: Promise<MongoClient>;
+  };
 
-export type DbConnection = {
-  conn: typeof mongoose;
-  db: Db;
-};
-
-export async function connectToDatabase(): Promise<DbConnection> {
-  try {
-    if (global.mongoose.conn) {
-      const db = global.mongoose.conn.connection.db;
-      if (!db) {
-        throw new Error('Database connection not established');
-      }
-      return {
-        conn: global.mongoose.conn,
-        db
-      };
-    }
-
-    if (!global.mongoose.promise) {
-      global.mongoose.promise = mongoose.connect(MONGODB_URI!, {
-        bufferCommands: false,
-      });
-    }
-
-    const conn = await global.mongoose.promise;
-    global.mongoose.conn = conn;
-
-    const db = conn.connection.db;
-    if (!db) {
-      throw new Error('Database connection not established');
-    }
-
-    return {
-      conn,
-      db
-    };
-  } catch (e) {
-    global.mongoose.promise = null;
-    throw e;
+  if (!globalWithMongo._mongoClientPromise) {
+    client = new MongoClient(uri, options);
+    globalWithMongo._mongoClientPromise = client.connect();
   }
+  clientPromise = globalWithMongo._mongoClientPromise;
+} else {
+  // In production mode, it's best to not use a global variable.
+  client = new MongoClient(uri, options);
+  clientPromise = client.connect();
 }
+
+export async function getMongoDb(): Promise<Db> {
+  const client = await clientPromise;
+  return client.db();
+}
+
+// Export a module-scoped MongoClient promise. By doing this in a
+// separate module, the client can be shared across functions.
+export default clientPromise;

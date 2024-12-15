@@ -24,7 +24,7 @@ export interface IOrder {
     start: Date;
     end: Date;
   };
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }

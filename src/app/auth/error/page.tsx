@@ -6,10 +6,10 @@ import { useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 
 const ERROR_MESSAGES: { [key: string]: string } = {
-  'Configuration': 'Erreur de configuration de l\'authentification',
+  'Configuration': 'Erreur de configuration de l&apos;authentification',
   'AccessDenied': 'Accès refusé',
   'Verification': 'Erreur de vérification du compte',
-  'Default': 'Une erreur inattendue s\'est produite'
+  'Default': 'Une erreur inattendue s&apos;est produite'
 };
 
 export default function AuthError() {
@@ -43,15 +43,21 @@ export default function AuthError() {
       <Box sx={{ mt: 8, mb: 4 }}>
         <Paper sx={{ p: 4 }}>
           <Typography variant="h4" component="h1" gutterBottom>
-            Erreur d'authentification
+            Erreur d&apos;authentification
           </Typography>
           
           <Typography variant="body1" color="error" paragraph>
             {errorDetails}
           </Typography>
 
-          <Typography variant="body2" color="text.secondary" paragraph>
-            Une erreur s'est produite lors de la tentative de connexion.
+          <Typography variant="h6" gutterBottom>
+            Il semble qu&apos;il y ait eu un problème lors de la connexion
+          </Typography>
+          <Typography variant="body1" paragraph>
+            Nous n&apos;avons pas pu vous connecter au système. Voici quelques raisons possibles :
+          </Typography>
+          <Typography variant="body1" paragraph>
+            L&apos;erreur pourrait être temporaire. Veuillez réessayer dans quelques instants.
           </Typography>
 
           <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
@@ -68,7 +74,7 @@ export default function AuthError() {
               color="secondary"
               onClick={() => window.location.href = '/'}
             >
-              Retour à l'accueil
+              Retour à l&apos;accueil
             </Button>
           </Box>
 

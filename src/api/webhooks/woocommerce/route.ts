@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import logger, { logWebhookError } from '@/lib/logger';
+import { verifyWooCommerceWebhook } from '@/lib/woocommerce';
 
 interface WooCommerceOrder {
   id: string;

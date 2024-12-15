@@ -7,7 +7,6 @@ import CreateSiteForm from './components/CreateSiteForm';
 import EmptySiteState from './components/EmptySiteState';
 import SiteGrid from './components/SiteGrid';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 
 export interface Site {
   _id: string;
@@ -24,7 +23,6 @@ export default function Home() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
 
   useEffect(() => {
     const initializePage = async () => {

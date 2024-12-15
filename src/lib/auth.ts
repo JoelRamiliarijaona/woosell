@@ -31,6 +31,28 @@ interface ExtendedJWT extends JWT {
   sub?: string;
 }
 
+interface ExtendedSession {
+  user: ExtendedUser;
+  roles: string[];
+  accessToken: string;
+  expires: string;
+}
+
+interface SessionWithRoles {
+  roles?: string[];
+}
+
+interface UserSession {
+  user?: {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    roles?: string[];
+  };
+  expires: string;
+  accessToken?: string;
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     KeycloakProvider({
@@ -175,4 +197,17 @@ export async function verifyToken(request: Request): Promise<KeycloakProfile | n
     console.error('Error verifying token:', error);
     return null;
   }
+}
+
+export async function getCurrentUser(): Promise<UserSession | null> {
+  const session = await getServerSession(authOptions);
+  return session as UserSession;
+}
+
+export function isAdmin(session: UserSession | null): boolean {
+  return session?.user?.roles?.includes("admin") ?? false;
+}
+
+export function hasRole(session: UserSession | null, role: string): boolean {
+  return session?.user?.roles?.includes(role) ?? false;
 }

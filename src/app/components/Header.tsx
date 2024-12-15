@@ -1,6 +1,6 @@
 'use client';
 
-import { AppBar, Toolbar, Button, Box, Typography } from '@mui/material';
+import { AppBar, Toolbar, Button, Typography } from '@mui/material';
 import { useSession, signOut } from 'next-auth/react';
 
 export default function Header() {

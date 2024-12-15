@@ -100,7 +100,6 @@ siteSchema.index({ orderCount: -1 });
 // Méthodes virtuelles
 siteSchema.virtual('monthlyOrderCount').get(function() {
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   return this.orderCount - (this.previousMonthOrders || 0);
 });
 

@@ -1,20 +1,10 @@
-'use client';
-
-import { FC, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Typography,
   Box,
+  Typography,
   Button,
   Grid,
-  Paper,
   IconButton,
-  Chip,
-  Divider,
-  Link,
   Alert,
   CircularProgress
 } from '@mui/material';
@@ -27,7 +17,6 @@ import {
   Receipt,
   Delete as DeleteIcon
 } from '@mui/icons-material';
-import { Site } from '../page';
 
 interface SiteDetailsProps {
   site: Site | null;
@@ -123,7 +112,7 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
 
   if (!site) return null;
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'default' => {
     switch (status) {
       case 'active':
         return 'success';
@@ -164,7 +153,7 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
             <Chip
               size="small"
               label={site.status}
-              color={getStatusColor(site.status) as any}
+              color={getStatusColor(site.status)}
               sx={{ ml: 1 }}
             />
           </Box>
@@ -180,18 +169,15 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
               <Typography variant="subtitle1" gutterBottom fontWeight="bold">
                 Informations du site
               </Typography>
-              <Paper sx={{ p: 2 }}>
+              <Box sx={{ p: 2 }}>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <Typography variant="body2" color="text.secondary">
                       Domaine
                     </Typography>
-                    <Link href={`https://${site.domain}`} target="_blank" sx={{ 
-                      display: 'block',
-                      wordBreak: 'break-all'
-                    }}>
+                    <Typography sx={{ display: 'block', wordBreak: 'break-all' }}>
                       {site.domain}
-                    </Link>
+                    </Typography>
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <Typography variant="body2" color="text.secondary">
@@ -200,7 +186,7 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
                     <Typography>{site.productType}</Typography>
                   </Grid>
                 </Grid>
-              </Paper>
+              </Box>
             </Grid>
 
             {/* Accès rapides */}
@@ -208,7 +194,7 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
               <Typography variant="subtitle1" gutterBottom fontWeight="bold">
                 Accès rapides
               </Typography>
-              <Paper sx={{ p: 2 }}>
+              <Box sx={{ p: 2 }}>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <Button
@@ -235,7 +221,7 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
                     </Button>
                   </Grid>
                 </Grid>
-              </Paper>
+              </Box>
             </Grid>
 
             {/* Facturation */}
@@ -243,7 +229,7 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
               <Typography variant="subtitle1" gutterBottom fontWeight="bold">
                 Facturation
               </Typography>
-              <Paper sx={{ p: 2 }}>
+              <Box sx={{ p: 2 }}>
                 <Grid container spacing={3}>
                   {/* Mois en cours */}
                   <Grid item xs={12} sm={6}>
@@ -332,7 +318,7 @@ const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
                     </Box>
                   </Grid>
                 </Grid>
-              </Paper>
+              </Box>
             </Grid>
           </Grid>
         </DialogContent>

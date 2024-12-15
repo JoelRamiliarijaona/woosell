@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     // Gérer l'événement
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const { siteId, userId, planType } = session.metadata!;
+      const siteId = session.metadata?.siteId;
 
       // Connexion à la base de données
       const { db } = await connectToDatabase();
@@ -44,13 +44,11 @@ export async function POST(request: NextRequest) {
         { _id: new Types.ObjectId(siteId) },
         {
           $set: {
-            'subscription.status': 'active',
-            'subscription.planType': planType,
-            'subscription.stripeCustomerId': session.customer,
-            'subscription.stripeSubscriptionId': session.subscription,
-            'subscription.currentPeriodEnd': new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 jours
-            updatedAt: new Date(),
-          },
+            'billing.status': 'active',
+            'billing.stripeCustomerId': session.customer,
+            'billing.subscriptionId': session.subscription,
+            'billing.updatedAt': new Date()
+          }
         }
       );
 

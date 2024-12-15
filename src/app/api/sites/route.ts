@@ -1,69 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { connectToDatabase } from '@/lib/mongodb';
-import { Types } from 'mongoose';
-import { authOptions } from '@/lib/auth';
+import { getMongoDb } from '@/lib/mongodb';
+import { getCurrentUser, isAdmin } from '@/lib/auth';
+import { Collection, ObjectId } from 'mongodb';
+
+export interface Site {
+  _id: ObjectId;
+  name: string;
+  domain: string;
+  status: string;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  stats: {
+    orderCount: number;
+    revenue: number;
+    lastSync?: Date;
+  };
+  billing: {
+    status: string;
+    plan: string;
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
-    // Vérifier l'authentification
-    const session = await getServerSession(authOptions);
-    console.log('Session dans /api/sites:', JSON.stringify(session, null, 2));
-    
-    if (!session?.user?.id) {
-      console.error('Pas d\'ID utilisateur dans la session');
-      return NextResponse.json({ error: 'Non autorisé - ID manquant' }, { status: 401 });
+    const session = await getCurrentUser();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Connexion à la base de données
-    const { db } = await connectToDatabase();
-    if (!db) {
-      console.error('Connexion à la base de données échouée');
-      throw new Error('La connexion à la base de données a échoué');
-    }
+    const db = await getMongoDb();
+    const sitesCollection: Collection<Site> = db.collection('sites');
 
-    // Récupérer l'utilisateur à partir de son sub Keycloak
-    const keycloakId = session.user.id;
-    console.log('Recherche utilisateur avec keycloakId:', keycloakId);
-
-    const user = await db.collection('users').findOne({ keycloakId });
-    console.log('Utilisateur trouvé:', user);
-
-    if (!user) {
-      // Si l'utilisateur n'existe pas, on le crée
-      console.log('Création d\'un nouvel utilisateur');
-      const newUser = {
-        keycloakId,
-        email: session.user.email,
-        name: session.user.name,
-        role: 'user',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-
-      const result = await db.collection('users').insertOne(newUser);
-      console.log('Nouvel utilisateur créé:', result);
-
-      // Utiliser le nouvel utilisateur
-      const sites = await db.collection('sites')
-        .find({ userId: new Types.ObjectId(result.insertedId) })
-        .toArray();
-
-      return NextResponse.json(sites);
-    }
-
-    // Récupérer tous les sites de l'utilisateur
-    const sites = await db.collection('sites')
-      .find({ userId: new Types.ObjectId(user._id) })
-      .toArray();
-
-    console.log('Sites trouvés:', sites);
+    const query = isAdmin(session) ? {} : { userId: session.user.email };
+    const sites = await sitesCollection.find(query).toArray();
 
     return NextResponse.json(sites);
   } catch (error) {
-    console.error('Erreur lors de la récupération des sites:', error);
+    console.error('Error fetching sites:', error);
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des sites', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -71,70 +47,58 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Vérifier l'authentification
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    const session = await getCurrentUser();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Connexion à la base de données
-    const { db } = await connectToDatabase();
-    if (!db) {
-      throw new Error('La connexion à la base de données a échoué');
+    const data = await request.json();
+    const { name, domain } = data;
+
+    if (!name || !domain) {
+      return NextResponse.json(
+        { error: 'Name and domain are required' },
+        { status: 400 }
+      );
     }
 
-    // Récupérer l'utilisateur
-    const keycloakId = session.user.id;
-    console.log('Recherche utilisateur avec keycloakId:', keycloakId);
+    const db = await getMongoDb();
+    const sitesCollection: Collection<Site> = db.collection('sites');
 
-    const user = await db.collection('users').findOne({ keycloakId });
-    console.log('Utilisateur trouvé:', user);
-
-    if (!user) {
-      return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
+    // Check if domain already exists
+    const existingSite = await sitesCollection.findOne({ domain });
+    if (existingSite) {
+      return NextResponse.json(
+        { error: 'Domain already exists' },
+        { status: 400 }
+      );
     }
 
-    // Récupérer les données du site
-    const body = await request.json();
-    const { name, domain, wooCommerceDetails } = body;
-
-    // Créer le site dans la base de données
-    const site = {
-      userId: new Types.ObjectId(user._id),
+    const newSite: Omit<Site, '_id'> = {
       name,
       domain,
-      status: 'active',
-      orderCount: 0,
-      totalRevenue: 0,
-      wooCommerceDetails,
-      settings: {
-        automaticProductImport: true,
-        notificationEmail: session.user.email,
-        orderNotifications: true
-      },
-      webhooks: {
-        orders: {
-          id: wooCommerceDetails.webhook_id,
-          topic: 'order.completed',
-          deliveryUrl: `${process.env.NEXTAUTH_URL}/api/woocommerce/webhook`
-        }
-      },
-      lastSync: new Date(),
+      status: 'pending',
+      userId: session.user.email!,
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      stats: {
+        orderCount: 0,
+        revenue: 0
+      },
+      billing: {
+        status: 'active',
+        plan: 'free'
+      }
     };
 
-    const result = await db.collection('sites').insertOne(site);
-    console.log('Site created:', result);
+    const result = await sitesCollection.insertOne(newSite as Site);
+    const insertedSite = await sitesCollection.findOne({ _id: result.insertedId });
 
-    return NextResponse.json({
-      message: 'Site créé avec succès',
-      site: { ...site, _id: result.insertedId }
-    });
+    return NextResponse.json(insertedSite);
   } catch (error) {
-    console.error('Erreur lors de la création du site:', error);
+    console.error('Error creating site:', error);
     return NextResponse.json(
-      { error: 'Erreur lors de la création du site', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

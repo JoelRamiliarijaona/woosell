@@ -1,7 +1,5 @@
-'use client';
-
 import { useState } from 'react';
-import { useForm, SubmitHandler } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import {
   Box,
   Button,
@@ -12,92 +10,70 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  Alert,
-  Typography,
-  Paper,
-  Link,
-  MenuItem,
-  Category,
-  ArrowBack
+  Alert
 } from '@mui/material';
-import { Visibility, VisibilityOff, Language, Store, Key, Close } from '@mui/icons-material';
+import {
+  Visibility,
+  VisibilityOff,
+  Language,
+  Store,
+  Key,
+  Close
+} from '@mui/icons-material';
 import axios from 'axios';
-import { loadStripe } from '@stripe/stripe-js';
 
 interface CreateSiteFormData {
-  domain: string;
   name: string;
+  domain: string;
   password: string;
 }
 
-interface ApiResponse<T> {
-  data?: T;
-  error?: {
-    message: string;
+interface SiteResponse {
+  _id: string;
+  name: string;
+  domain: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  billing: {
+    status: string;
+    plan: string;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    currentPeriodEnd?: string;
+  };
+  stats: {
+    orderCount: number;
+    revenue: number;
+    lastSync?: string;
   };
 }
 
 interface CreateSiteFormProps {
   open: boolean;
   onClose: () => void;
-  onSiteCreated: (site: any) => void;
+  onSiteCreated: (site: SiteResponse) => void;
 }
 
-const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCreated }) => {
+export default function CreateSiteForm({ open, onClose, onSiteCreated }: CreateSiteFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { register, handleSubmit, formState: { errors }, reset } = useForm<CreateSiteFormData>();
 
-  const handleFormSubmit: SubmitHandler<CreateSiteFormData> = async (data) => {
+  const onSubmit = async (data: CreateSiteFormData) => {
     setIsLoading(true);
-    setError('');
+    setError(null);
 
     try {
-      // Créer d'abord le site
-      const wooCommerceResponse = await axios.post('http://51.159.14.225:7999/v3/create_woo_instance', {
-        name: data.name,
-        domain: data.domain,
-        password: data.password,
-        thematic: "general",
-        target_audience: "all",
-        key_seo_term: "ecommerce"
-      }, {
-        timeout: 1800000 // 30 minutes
-      });
-
-      if (wooCommerceResponse.data) {
-        // Créer le site dans notre base de données
-        const siteResponse = await axios.post('/api/sites', {
-          name: data.name,
-          domain: data.domain,
-          wooCommerceDetails: wooCommerceResponse.data
-        });
-
-        if (siteResponse.data) {
-          // Créer la session Stripe
-          const stripeResponse = await axios.post('/api/stripe/create-checkout-session', {
-            siteId: siteResponse.data.site._id,
-            planType: 'standard' // ou 'premium' selon votre logique
-          });
-
-          // Rediriger vers la page de paiement Stripe
-          const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
-          if (stripe) {
-            await stripe.redirectToCheckout({
-              sessionId: stripeResponse.data.sessionId
-            });
-          }
-
-          onSiteCreated(siteResponse.data.site);
-          reset();
-          onClose();
-        }
-      }
+      const response = await axios.post<{ site: SiteResponse }>('/api/sites', data);
+      onSiteCreated(response.data.site);
+      reset();
+      onClose();
     } catch (error) {
-      console.error('Error creating site:', error);
       if (axios.isAxiosError(error)) {
-        setError(error.response?.data?.message || error.message || 'Une erreur est survenue lors de la création du site');
+        setError(error.response?.data?.message || 'Une erreur est survenue');
       } else {
         setError('Une erreur inattendue est survenue');
       }
@@ -107,32 +83,16 @@ const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCr
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: '12px',
-          m: { xs: 2, sm: 4 }
-        }
-      }}
-    >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        pb: 1
-      }}>
-        <Typography variant="h6" component="h2">
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
           Créer un nouveau site
-        </Typography>
-        <IconButton onClick={onClose} size="small">
-          <Close />
-        </IconButton>
+          <IconButton onClick={onClose} size="small">
+            <Close />
+          </IconButton>
+        </Box>
       </DialogTitle>
-      
+
       <DialogContent>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -142,17 +102,23 @@ const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCr
         
         <Box
           component="form"
-          onSubmit={handleSubmit(handleFormSubmit)}
+          onSubmit={handleSubmit(onSubmit)}
           sx={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 3,
-            pt: 1
+            gap: 2,
+            mt: 2
           }}
         >
           <TextField
             label="Nom du site"
-            {...register('name', { required: 'Le nom du site est requis' })}
+            {...register('name', {
+              required: 'Le nom du site est requis',
+              minLength: {
+                value: 3,
+                message: 'Le nom doit contenir au moins 3 caractères'
+              }
+            })}
             error={!!errors.name}
             helperText={errors.name?.message}
             InputProps={{
@@ -165,12 +131,12 @@ const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCr
           />
 
           <TextField
-            label="Nom de domaine"
-            {...register('domain', { 
+            label="Domaine"
+            {...register('domain', {
               required: 'Le domaine est requis',
               pattern: {
                 value: /^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]\.([a-zA-Z]{2,})+$/,
-                message: 'Format de domaine invalide. Exemple: mon-site.com'
+                message: 'Format de domaine invalide (ex: mon-site.com)'
               }
             })}
             error={!!errors.domain}
@@ -187,7 +153,7 @@ const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCr
           <TextField
             type={showPassword ? 'text' : 'password'}
             label="Mot de passe administrateur"
-            {...register('password', { 
+            {...register('password', {
               required: 'Le mot de passe est requis',
               minLength: {
                 value: 8,
@@ -205,7 +171,6 @@ const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCr
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
-                    aria-label="toggle password visibility"
                     onClick={() => setShowPassword(!showPassword)}
                     edge="end"
                   >
@@ -230,6 +195,4 @@ const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCr
       </DialogContent>
     </Dialog>
   );
-};
-
-export default CreateSiteForm;
+}

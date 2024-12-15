@@ -6,10 +6,21 @@ import { useEffect } from 'react';
 
 interface RoleGuardProps {
   children: React.ReactNode;
-  requiredRole?: 'admin' | 'user';
+  allowedRoles: string[];
 }
 
-export default function RoleGuard({ children, requiredRole = 'user' }: RoleGuardProps) {
+interface SessionData {
+  user?: {
+    id?: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  };
+  roles?: string[];
+  expires: string;
+}
+
+export default function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -21,16 +32,14 @@ export default function RoleGuard({ children, requiredRole = 'user' }: RoleGuard
       return;
     }
 
-    const roles = (session as any).roles || [];
-    const isAdmin = roles.includes('admin');
-    const isUser = roles.includes('user') || isAdmin;
+    const sessionData = session as SessionData;
+    const roles = sessionData.roles || [];
+    const hasAllowedRole = allowedRoles.some(role => roles.includes(role));
 
-    if (requiredRole === 'admin' && !isAdmin) {
-      router.push('/unauthorized');
-    } else if (requiredRole === 'user' && !isUser) {
+    if (!hasAllowedRole) {
       router.push('/unauthorized');
     }
-  }, [session, status, router, requiredRole]);
+  }, [session, status, router, allowedRoles]);
 
   if (status === 'loading') {
     return <div>Chargement...</div>;

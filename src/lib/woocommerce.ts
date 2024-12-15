@@ -9,34 +9,66 @@ interface WooCommerceWebhookHeaders {
   'x-wc-webhook-id': string;
 }
 
+interface WooCommerceResponse<T> {
+  data: T;
+  status: number;
+}
+
+interface WooCommerceError {
+  code: string;
+  message: string;
+  data?: unknown;
+}
+
+interface WooCommerceProduct {
+  id: number;
+  name: string;
+  price: string;
+  regular_price: string;
+  sale_price: string;
+  status: string;
+}
+
+interface WooCommerceOrder {
+  id: number;
+  status: string;
+  total: string;
+  billing: {
+    first_name: string;
+    last_name: string;
+    email: string;
+  };
+  line_items: Array<{
+    product_id: number;
+    quantity: number;
+    total: string;
+  }>;
+}
+
 export async function verifyWooCommerceWebhook(request: Request): Promise<boolean> {
   try {
-    if (!process.env.WOOCOMMERCE_WEBHOOK_SECRET) {
-      throw new Error('WOOCOMMERCE_WEBHOOK_SECRET is not defined in environment variables');
-    }
-
     const signature = request.headers.get('x-wc-webhook-signature');
     if (!signature) {
-      console.error('No webhook signature found in headers');
       return false;
     }
 
-    // Get the raw body
-    const rawBody = await request.text();
-    const body = rawBody.length > 0 ? rawBody : '';
+    const payload = await request.text();
+    const secret = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
+    
+    if (!secret) {
+      throw new Error('WOOCOMMERCE_WEBHOOK_SECRET is not defined');
+    }
 
-    // Create HMAC
-    const hmac = crypto.createHmac('sha256', process.env.WOOCOMMERCE_WEBHOOK_SECRET);
-    hmac.update(body);
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(payload);
     const calculatedSignature = hmac.digest('base64');
 
-    // Compare signatures
     return crypto.timingSafeEqual(
       Buffer.from(signature),
       Buffer.from(calculatedSignature)
     );
   } catch (error) {
-    console.error('Error verifying WooCommerce webhook:', error);
+    console.error('Error verifying webhook:', error);
     return false;
   }
 }
@@ -60,7 +92,7 @@ export class WooCommerceClient {
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     data?: unknown
-  ): Promise<T> {
+  ): Promise<WooCommerceResponse<T>> {
     const url = new URL(`${this.siteUrl}/wp-json/wc/v3/${endpoint}`);
     url.searchParams.append('consumer_key', this.consumerKey);
     url.searchParams.append('consumer_secret', this.consumerSecret);
@@ -74,13 +106,14 @@ export class WooCommerceClient {
     });
 
     if (!response.ok) {
-      throw new Error(`WooCommerce API error: ${response.statusText}`);
+      const error: WooCommerceError = await response.json();
+      throw new Error(error.message);
     }
 
     return response.json();
   }
 
-  async setupOrderWebhook(backendUrl: string, consumerKey: string, consumerSecret: string): Promise<void> {
+  async setupOrderWebhook(backendUrl: string): Promise<void> {
     try {
       const endpoint = `${this.siteUrl}/wp-json/wc/v3/webhooks`;
       const webhookData = {
@@ -90,7 +123,7 @@ export class WooCommerceClient {
         status: "active"
       };
 
-      const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+      const auth = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -102,8 +135,8 @@ export class WooCommerceClient {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Failed to create webhook: ${JSON.stringify(error)}`);
+        const error: WooCommerceError = await response.json();
+        throw new Error(`Failed to create webhook: ${error.message}`);
       }
 
       console.log('Webhook configured successfully for site:', this.siteUrl);
@@ -118,7 +151,7 @@ export class WooCommerceClient {
     name: string;
     password: string;
     productType: string;
-  }): Promise<any> {
+  }): Promise<WooCommerceResponse<unknown>> {
     try {
       const response = await fetch('http://104.21.30.216:7999/create-woocommerce', {
         method: 'POST',
@@ -129,8 +162,8 @@ export class WooCommerceClient {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Failed to create WooCommerce site: ${JSON.stringify(error)}`);
+        const error: WooCommerceError = await response.json();
+        throw new Error(`Failed to create WooCommerce site: ${error.message}`);
       }
 
       const data = await response.json();
@@ -139,8 +172,6 @@ export class WooCommerceClient {
       if (data.success) {
         await this.setupOrderWebhook(
           process.env.BACKEND_URL || 'http://localhost:3000',
-          data.credentials.consumer_key,
-          data.credentials.consumer_secret
         );
       }
 
@@ -152,29 +183,29 @@ export class WooCommerceClient {
   }
 
   // Orders
-  async getOrders() {
-    return this.request<any[]>('orders');
+  async getOrders(): Promise<WooCommerceResponse<WooCommerceOrder[]>> {
+    return this.request<WooCommerceOrder[]>('orders');
   }
 
-  async getOrder(orderId: number) {
-    return this.request<any>(`orders/${orderId}`);
+  async getOrder(orderId: number): Promise<WooCommerceResponse<WooCommerceOrder>> {
+    return this.request<WooCommerceOrder>(`orders/${orderId}`);
   }
 
   // Products
-  async getProducts() {
-    return this.request<any[]>('products');
+  async getProducts(): Promise<WooCommerceResponse<WooCommerceProduct[]>> {
+    return this.request<WooCommerceProduct[]>('products');
   }
 
-  async getProduct(productId: number) {
-    return this.request<any>(`products/${productId}`);
+  async getProduct(productId: number): Promise<WooCommerceResponse<WooCommerceProduct>> {
+    return this.request<WooCommerceProduct>(`products/${productId}`);
   }
 
   // Customers
-  async getCustomers() {
-    return this.request<any[]>('customers');
+  async getCustomers(): Promise<WooCommerceResponse<unknown[]>> {
+    return this.request<unknown[]>('customers');
   }
 
-  async getCustomer(customerId: number) {
-    return this.request<any>(`customers/${customerId}`);
+  async getCustomer(customerId: number): Promise<WooCommerceResponse<unknown>> {
+    return this.request<unknown>(`customers/${customerId}`);
   }
 }

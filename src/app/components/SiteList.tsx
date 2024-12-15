@@ -1,15 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Box, Grid, Card, CardContent, Typography, Button, Chip } from '@mui/material';
+import { Store, Language, Timeline } from '@mui/icons-material';
 
 interface Site {
-  id: string;
+  _id: string;
   name: string;
   domain: string;
-  orderCount: number;
+  status: string;
+  stats: {
+    orderCount: number;
+    revenue: number;
+    lastSync?: string;
+  };
+  billing: {
+    status: string;
+    plan: string;
+  };
+  createdAt: string;
 }
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export default function SiteList() {
   const [sites, setSites] = useState<Site[]>([]);
@@ -19,15 +29,17 @@ export default function SiteList() {
   useEffect(() => {
     const fetchSites = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/sites`, {
+        const response = await fetch('/api/sites', {
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
         });
+        
         if (!response.ok) {
           throw new Error('Failed to fetch sites');
         }
+        
         const data = await response.json();
         setSites(data);
       } catch (err) {
@@ -41,50 +53,112 @@ export default function SiteList() {
     fetchSites();
   }, []);
 
+  const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'default' => {
+    switch (status) {
+      case 'active':
+        return 'success';
+      case 'pending':
+        return 'warning';
+      case 'error':
+        return 'error';
+      default:
+        return 'default';
+    }
+  };
+
   if (isLoading) {
-    return <div className="text-center">Chargement...</div>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Typography>Chargement des sites...</Typography>
+      </Box>
+    );
   }
 
   if (error) {
-    return <div className="text-red-600 text-center">{error}</div>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Typography color="error">{error}</Typography>
+      </Box>
+    );
+  }
+
+  if (sites.length === 0) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Typography>Aucun site trouvé</Typography>
+      </Box>
+    );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {sites.map((site) => (
-          <div
-            key={site.id}
-            className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow"
+    <Grid container spacing={3} sx={{ p: 3 }}>
+      {sites.map((site) => (
+        <Grid item xs={12} sm={6} md={4} key={site._id}>
+          <Card 
+            sx={{ 
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: 4
+              }
+            }}
           >
-            <h3 className="text-xl font-semibold text-gray-800">{site.name}</h3>
-            <p className="text-gray-600 mt-2">{site.domain}</p>
-            <div className="mt-4 flex justify-between items-center">
-              <span className="text-sm text-gray-500">
-                {site.orderCount} commandes
-              </span>
-              <div className="space-x-2">
-                <a
+            <CardContent sx={{ flexGrow: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Store sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" component="h2" sx={{ flexGrow: 1 }}>
+                  {site.name}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={site.status}
+                  color={getStatusColor(site.status)}
+                />
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Language sx={{ mr: 1, color: 'text.secondary', fontSize: '1.2rem' }} />
+                <Typography variant="body2" color="text.secondary">
+                  {site.domain}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Timeline sx={{ mr: 1, color: 'text.secondary', fontSize: '1.2rem' }} />
+                <Typography variant="body2" color="text.secondary">
+                  {site.stats.orderCount} commandes
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                <Button
+                  variant="contained"
+                  size="small"
                   href={`https://${site.domain}/wp-admin`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                  sx={{ flexGrow: 1 }}
                 >
                   Admin
-                </a>
-                <a
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
                   href={`https://${site.domain}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  sx={{ flexGrow: 1 }}
                 >
-                  Voir
-                </a>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+                  Voir le site
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
+    </Grid>
   );
 }

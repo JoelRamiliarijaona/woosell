@@ -27,6 +27,21 @@ import { fr } from 'date-fns/locale';
 import { Site } from '../page';
 import SiteDetails from './SiteDetails';
 
+interface Site {
+  _id: string;
+  name: string;
+  domain: string;
+  status: string;
+  createdAt: string;
+  billing: {
+    status: string;
+    plan: string;
+  };
+  orderCount: number;
+  productType: string;
+  lastSync: string;
+}
+
 interface SiteGridProps {
   sites?: Site[];
   onSiteClick: (site: Site) => void;
@@ -136,7 +151,7 @@ const SiteGrid: FC<SiteGridProps> = ({ sites = [], onSiteClick }) => {
                     </Typography>
                     <Chip
                       label={getStatusText(site.status)}
-                      color={getStatusColor(site.status) as any}
+                      color={getStatusColor(site.status)}
                       size="small"
                       sx={{ ml: 1 }}
                     />
