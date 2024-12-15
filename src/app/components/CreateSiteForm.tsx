@@ -1,25 +1,26 @@
 'use client';
 
 import { useState } from 'react';
-import type { FC } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
-import { 
-  TextField, 
-  Button, 
-  Box, 
-  Paper,
-  Typography,
-  CircularProgress,
+import {
+  Box,
+  Button,
+  TextField,
   InputAdornment,
   IconButton,
-  MenuItem,
-  Link,
+  CircularProgress,
   Dialog,
   DialogContent,
   DialogTitle,
-  Alert
+  Alert,
+  Typography,
+  Paper,
+  Link,
+  MenuItem,
+  Category,
+  ArrowBack
 } from '@mui/material';
-import { Visibility, VisibilityOff, Language, Store, Key, Category, ArrowBack, Close } from '@mui/icons-material';
+import { Visibility, VisibilityOff, Language, Store, Key, Close } from '@mui/icons-material';
 import axios from 'axios';
 import { loadStripe } from '@stripe/stripe-js';
 
@@ -42,23 +43,22 @@ interface CreateSiteFormProps {
   onSiteCreated: (site: any) => void;
 }
 
-const CreateSiteForm: FC<CreateSiteFormProps> = ({ open, onClose, onSiteCreated }) => {
-  const [isLoading, setIsLoading] = useState(false);
+const CreateSiteForm: React.FC<CreateSiteFormProps> = ({ open, onClose, onSiteCreated }) => {
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { register, handleSubmit, formState: { errors }, reset } = useForm<CreateSiteFormData>();
 
-  const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleFormSubmit: SubmitHandler<CreateSiteFormData> = async (data) => {
     setIsLoading(true);
     setError('');
 
     try {
       // Créer d'abord le site
       const wooCommerceResponse = await axios.post('http://51.159.14.225:7999/v3/create_woo_instance', {
-        name: event.currentTarget.name.value,
-        domain: event.currentTarget.domain.value,
-        password: event.currentTarget.password.value,
+        name: data.name,
+        domain: data.domain,
+        password: data.password,
         thematic: "general",
         target_audience: "all",
         key_seo_term: "ecommerce"
@@ -69,8 +69,8 @@ const CreateSiteForm: FC<CreateSiteFormProps> = ({ open, onClose, onSiteCreated 
       if (wooCommerceResponse.data) {
         // Créer le site dans notre base de données
         const siteResponse = await axios.post('/api/sites', {
-          name: event.currentTarget.name.value,
-          domain: event.currentTarget.domain.value,
+          name: data.name,
+          domain: data.domain,
           wooCommerceDetails: wooCommerceResponse.data
         });
 
@@ -142,7 +142,7 @@ const CreateSiteForm: FC<CreateSiteFormProps> = ({ open, onClose, onSiteCreated 
         
         <Box
           component="form"
-          onSubmit={handleFormSubmit}
+          onSubmit={handleSubmit(handleFormSubmit)}
           sx={{
             display: 'flex',
             flexDirection: 'column',
