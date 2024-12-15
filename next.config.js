@@ -4,7 +4,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:3000/api/:path*',
+        destination: '/api/:path*',
       },
     ];
   },
@@ -21,6 +21,19 @@ const nextConfig = {
       },
     ];
   },
+  experimental: {
+    serverMinification: false,
+  },
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+    responseLimit: false,
+  },
+  env: {
+    MONGODB_URI: process.env.MONGODB_URI,
+    MONGODB_DB: process.env.MONGODB_DB,
+  }
 }
 
-module.exports = nextConfig;
+module.exports = nextConfig

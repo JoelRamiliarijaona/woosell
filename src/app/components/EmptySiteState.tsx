@@ -57,11 +57,15 @@ const EmptySiteState = ({ onCreateClick }: EmptySiteStateProps) => {
           startIcon={<AddCircleOutlineIcon />}
           onClick={onCreateClick}
           sx={{
-            borderRadius: 2,
-            py: 1.5,
-            px: 4,
+            borderRadius: '8px',
             textTransform: 'none',
+            px: 4,
+            py: 1.5,
             fontSize: '1.1rem',
+            background: 'linear-gradient(45deg, #2563eb, #4f46e5)',
+            '&:hover': {
+              background: 'linear-gradient(45deg, #1d4ed8, #4338ca)',
+            },
           }}
         >
           Créer mon premier site

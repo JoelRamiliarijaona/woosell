@@ -11,7 +11,8 @@ import {
   Chip,
   CardActionArea,
   Tooltip,
-  Badge
+  Badge,
+  CircularProgress
 } from '@mui/material';
 import { 
   Language, 
@@ -27,7 +28,7 @@ import { Site } from '../page';
 import SiteDetails from './SiteDetails';
 
 interface SiteGridProps {
-  sites: Site[];
+  sites?: Site[];
   onSiteClick: (site: Site) => void;
 }
 
@@ -57,27 +58,51 @@ const getStatusText = (status: string) => {
   }
 };
 
-const SiteGrid: FC<SiteGridProps> = ({ sites, onSiteClick }) => {
+const SiteGrid: FC<SiteGridProps> = ({ sites = [], onSiteClick }) => {
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const handleCardClick = (site: Site) => {
+    setSelectedSite(site);
+    setDetailsOpen(true);
+    onSiteClick(site);
+  };
+
+  if (!Array.isArray(sites)) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (sites.length === 0) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+        <Typography variant="body1" color="textSecondary">
+          Aucun site trouvé
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <>
-      <Grid container spacing={3}>
+      <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ p: { xs: 2, sm: 3 } }}>
         {sites.map((site) => (
-          <Grid item xs={12} sm={6} md={4} key={site._id}>
+          <Grid item xs={12} sm={6} md={4} lg={3} key={site._id}>
             <Card 
-              elevation={2}
               sx={{
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                transition: 'transform 0.2s, box-shadow 0.2s',
+                position: 'relative',
+                overflow: 'visible',
+                transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: 6,
+                  boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
                 },
-                position: 'relative',
-                overflow: 'visible'
               }}
             >
               {site.orderCount > 0 && (
@@ -89,94 +114,107 @@ const SiteGrid: FC<SiteGridProps> = ({ sites, onSiteClick }) => {
                     top: -8,
                     right: -8,
                     '& .MuiBadge-badge': {
-                      fontSize: '0.8rem',
-                      height: '22px',
-                      minWidth: '22px',
+                      fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                      height: { xs: '20px', sm: '22px' },
+                      minWidth: { xs: '20px', sm: '22px' },
                       borderRadius: '11px',
                     }
                   }}
                 >
-                  <ShoppingCart />
+                  <Box sx={{ width: 4 }} />
                 </Badge>
               )}
               
-              <CardActionArea onClick={() => setSelectedSite(site)}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Store sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+              <CardActionArea 
+                onClick={() => handleCardClick(site)}
+                sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+              >
+                <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                    <Typography variant="h6" component="div" sx={{ wordBreak: 'break-word' }}>
                       {site.name}
                     </Typography>
                     <Chip
-                      size="small"
                       label={getStatusText(site.status)}
                       color={getStatusColor(site.status) as any}
+                      size="small"
                       sx={{ ml: 1 }}
                     />
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, color: 'text.secondary' }}>
-                    <Language sx={{ mr: 1, fontSize: '1rem' }} />
-                    <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Language sx={{ mr: 1, fontSize: '1rem', color: 'text.secondary' }} />
+                    <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
                       {site.domain}
                     </Typography>
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                     <Store sx={{ mr: 1, fontSize: '1rem', color: 'text.secondary' }} />
                     <Typography variant="body2" color="text.secondary">
                       {site.productType}
                     </Typography>
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', color: 'text.secondary' }}>
-                    <AccessTime sx={{ mr: 1, fontSize: '1rem' }} />
-                    <Typography variant="body2">
-                      {formatDistanceToNow(new Date(site.createdAt), { 
-                        addSuffix: true,
-                        locale: fr 
-                      })}
-                    </Typography>
+                  {site.lastSync && (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <AccessTime sx={{ mr: 1, fontSize: '1rem', color: 'text.secondary' }} />
+                      <Typography variant="body2" color="text.secondary">
+                        Dernière synchro: {formatDistanceToNow(new Date(site.lastSync), { addSuffix: true, locale: fr })}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Box sx={{ 
+                    mt: 'auto', 
+                    pt: 2, 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    borderTop: '1px solid',
+                    borderColor: 'divider',
+                    alignItems: 'center'
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <ShoppingCart sx={{ mr: 0.5, fontSize: '1.1rem', color: 'primary.main' }} />
+                      <Typography variant="body2" color="primary">
+                        {site.orderCount} commandes
+                      </Typography>
+                    </Box>
+                    
+                    <Box>
+                      <Tooltip title="Paramètres">
+                        <IconButton size="small" color="inherit">
+                          <Settings fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Ouvrir le site">
+                        <IconButton 
+                          size="small" 
+                          color="primary"
+                          component="a"
+                          href={`https://${site.domain}`}
+                          target="_blank"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Launch fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </Box>
                 </CardContent>
               </CardActionArea>
-
-              <Box 
-                sx={{ 
-                  mt: 'auto', 
-                  display: 'flex', 
-                  justifyContent: 'flex-end',
-                  p: 1,
-                  borderTop: '1px solid',
-                  borderColor: 'divider',
-                }}
-              >
-                <Tooltip title="Paramètres">
-                  <IconButton size="small" onClick={() => setSelectedSite(site)}>
-                    <Settings fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Ouvrir le site">
-                  <IconButton 
-                    size="small" 
-                    href={`https://${site.domain}`}
-                    target="_blank"
-                    sx={{ ml: 1 }}
-                  >
-                    <Launch fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
             </Card>
           </Grid>
         ))}
       </Grid>
 
-      <SiteDetails
-        site={selectedSite}
-        open={!!selectedSite}
-        onClose={() => setSelectedSite(null)}
-      />
+      {selectedSite && (
+        <SiteDetails
+          site={selectedSite}
+          open={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+        />
+      )}
     </>
   );
 };

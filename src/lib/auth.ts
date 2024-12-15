@@ -1,57 +1,61 @@
-import NextAuth, { NextAuthOptions } from 'next-auth';
+import { jwtVerify, createRemoteJWKSet } from 'jose';
+import type { NextAuthOptions, User } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
+import type { AdapterUser } from 'next-auth/adapters';
 import KeycloakProvider from 'next-auth/providers/keycloak';
-import { JWT } from 'next-auth/jwt';
-import { Account, Profile } from 'next-auth';
-import { connectToDatabase } from '@/lib/mongodb';
+import { connectToDatabase } from './mongodb';
 
-const keycloakConfig = {
-  clientId: process.env.KEYCLOAK_CLIENT_ID!,
-  clientSecret: process.env.KEYCLOAK_CLIENT_SECRET!,
-  issuer: process.env.KEYCLOAK_ISSUER,
-};
+interface KeycloakProfile {
+  sub: string;
+  email_verified: boolean;
+  name: string;
+  preferred_username: string;
+  given_name: string;
+  family_name: string;
+  email: string;
+  realm_access?: {
+    roles: string[];
+  };
+}
 
-console.log('Keycloak Configuration:', {
-  ...keycloakConfig,
-  NEXTAUTH_URL: process.env.NEXTAUTH_URL,
-  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL
-});
+interface ExtendedUser extends User {
+  id: string;
+  roles?: string[];
+}
 
 interface ExtendedJWT extends JWT {
+  id: string;
+  roles?: string[];
   accessToken?: string;
   refreshToken?: string;
-  idToken?: string;
-  roles?: string[];
   sub?: string;
 }
 
-const authOptions: NextAuthOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     KeycloakProvider({
-      clientId: keycloakConfig.clientId,
-      clientSecret: keycloakConfig.clientSecret,
-      issuer: keycloakConfig.issuer,
-      authorization: {
-        params: {
-          scope: 'openid email profile',
+      clientId: process.env.KEYCLOAK_CLIENT_ID!,
+      clientSecret: process.env.KEYCLOAK_CLIENT_SECRET!,
+      issuer: process.env.KEYCLOAK_ISSUER,
+      authorization: { 
+        params: { 
+          scope: 'openid email profile offline_access',
           response_type: 'code',
           access_type: 'offline',
-        }
+        } 
       },
       httpOptions: {
         timeout: 40000
       }
     })
   ],
-  secret: process.env.NEXTAUTH_SECRET,
   session: {
-    strategy: "jwt",
+    strategy: 'jwt',
     maxAge: 24 * 60 * 60
   },
   callbacks: {
-    async signIn({ user, account, profile }: { user: any; account: any; profile?: any }) {
+    async signIn({ user, account, profile }) {
       try {
-        console.log('SignIn Profile:', profile);
-        
         if (!profile?.sub) {
           console.error('No Keycloak ID (sub) found in profile');
           return false;
@@ -132,7 +136,6 @@ const authOptions: NextAuthOptions = {
       }
     },
     async redirect({ url, baseUrl }) {
-      // Rediriger vers le dashboard après la connexion
       if (url.startsWith(baseUrl)) {
         if (url.includes('/api/')) {
           return `${baseUrl}/dashboard`;
@@ -143,23 +146,33 @@ const authOptions: NextAuthOptions = {
     }
   },
   debug: true,
-  logger: {
-    error(code, metadata) {
-      console.error('Auth error:', { code, metadata });
-    },
-    warn(code) {
-      console.warn('Auth warning:', code);
-    },
-    debug(code, metadata) {
-      console.log('Auth debug:', { code, metadata });
-    }
-  },
   pages: {
     signIn: '/auth/signin',
+    signOut: '/auth/signout',
     error: '/auth/error',
-  }
+  },
+  handlers: [
+    {
+      page: '/api/auth/verify-token',
+      handler: verifyToken,
+    },
+  ],
 };
 
-const handler = NextAuth(authOptions);
+export async function verifyToken(request: Request): Promise<KeycloakProfile | null> {
+  try {
+    const token = request.headers.get('Authorization')?.split(' ')[1];
+    if (!token) return null;
 
-export { handler as GET, handler as POST };
+    const JWKS = createRemoteJWKSet(new URL(`${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/certs`));
+    
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: process.env.KEYCLOAK_ISSUER
+    });
+
+    return payload as KeycloakProfile;
+  } catch (error) {
+    console.error('Error verifying token:', error);
+    return null;
+  }
+}

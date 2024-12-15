@@ -1,11 +1,10 @@
 'use client';
 
-import { AppBar, Toolbar, Button, Box } from '@mui/material';
+import { AppBar, Toolbar, Button, Box, Typography } from '@mui/material';
 import { useSession, signOut } from 'next-auth/react';
-import Logo from './Logo';
 
-export default function NavBar() {
-  const { data: session } = useSession();
+export default function Header() {
+  const { data: session, status } = useSession();
 
   const handleLogin = () => {
     const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL;
@@ -51,59 +50,29 @@ export default function NavBar() {
         }
       });
 
-      // Rediriger vers la page de déconnexion de Keycloak
+      // Redirection vers la page de déconnexion Keycloak
       window.location.href = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/logout?redirect_uri=${redirectUri}`;
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error);
+      window.location.href = '/';
     }
   };
 
   return (
-    <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(0, 0, 0, 0.12)' }}>
-      <Toolbar sx={{ justifyContent: 'space-between' }}>
-        <Logo />
-        <Box>
-          {session ? (
-            <Button
-              variant="outlined"
-              onClick={handleLogout}
-              sx={{
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontSize: '0.95rem',
-                py: 1,
-                px: 3,
-                borderColor: 'grey.300',
-                color: 'text.secondary',
-                '&:hover': {
-                  borderColor: 'grey.400',
-                  backgroundColor: 'grey.50',
-                },
-              }}
-            >
-              Se déconnecter
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={handleLogin}
-              sx={{
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontSize: '0.95rem',
-                py: 1,
-                px: 3,
-                backgroundColor: 'primary.main',
-                color: 'white',
-                '&:hover': {
-                  backgroundColor: 'primary.dark',
-                },
-              }}
-            >
-              Se connecter
-            </Button>
-          )}
-        </Box>
+    <AppBar position="static">
+      <Toolbar>
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          WooSell
+        </Typography>
+        {status === 'loading' ? null : session ? (
+          <Button color="inherit" onClick={handleLogout}>
+            Se déconnecter
+          </Button>
+        ) : (
+          <Button color="inherit" onClick={handleLogin}>
+            Se connecter
+          </Button>
+        )}
       </Toolbar>
     </AppBar>
   );

@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Roboto_Mono } from "next/font/google";
 import { AuthProvider } from "./components/AuthProvider";
 import NavBar from "./components/NavBar";
+import Notifications from "./components/Notifications";
 import ThemeRegistry from '../theme/ThemeRegistry';
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
+  display: 'swap',
+  variable: '--font-inter',
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const robotoMono = Roboto_Mono({
   subsets: ["latin"],
+  display: 'swap',
+  variable: '--font-roboto-mono',
 });
 
 export const metadata: Metadata = {
@@ -26,14 +29,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="fr" className={`${inter.variable} ${robotoMono.variable}`}>
+      <body>
         <ThemeRegistry>
           <AuthProvider>
             <NavBar />
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <main className="container mx-auto px-4">
               {children}
             </main>
+            <Notifications />
           </AuthProvider>
         </ThemeRegistry>
       </body>

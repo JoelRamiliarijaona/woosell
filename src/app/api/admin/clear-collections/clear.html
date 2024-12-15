@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Collections</title>
+</head>
+<body>
+    <button onclick="clearCollections()">Vider les collections sites et billing</button>
+    <div id="result"></div>
+
+    <script>
+        async function clearCollections() {
+            try {
+                const response = await fetch('/api/admin/clear-collections', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('result').textContent = 'Erreur: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

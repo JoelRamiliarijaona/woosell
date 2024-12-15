@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Container, AppBar, Toolbar, Button, Box, Typography } from '@mui/material';
+import { Button, Box, Typography, CircularProgress } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CreateSiteForm from './components/CreateSiteForm';
 import EmptySiteState from './components/EmptySiteState';
-import Logo from './components/Logo';
 import SiteGrid from './components/SiteGrid';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -20,163 +19,102 @@ export interface Site {
   status: string;
 }
 
-interface CreateSiteFormData {
-  domain: string;
-  name: string;
-  password: string;
-  productType: string;
-}
-
-interface ApiResponse<T> {
-  data?: T;
-  error?: {
-    message: string;
-  };
-}
-
 export default function Home() {
   const { data: session, status } = useSession();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/login');
-    }
-  }, [status, router]);
-
-  if (status === 'loading') {
-    return <div>Chargement...</div>;
-  }
-
-  if (!session) {
-    return null;
-  }
-
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    const fetchSites = async () => {
-      try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sites`);
-        const data = await response.json();
-        setSites(data);
-      } catch (error) {
-        console.error('Error fetching sites:', error);
-      } finally {
-        setLoading(false);
+    const initializePage = async () => {
+      if (status === 'loading') {
+        return;
       }
+
+      if (session) {
+        try {
+          const response = await fetch('/api/sites');
+          const data = await response.json();
+          setSites(data);
+        } catch (error) {
+          console.error('Error fetching sites:', error);
+        }
+      }
+      setLoading(false);
     };
 
-    fetchSites();
-  }, []);
+    initializePage();
+  }, [session, status]);
 
-  const handleCreateClick = () => {
+  const handleCreateSite = () => {
     setShowCreateForm(true);
   };
 
+  // Afficher le loader pendant la vérification de la session
+  if (status === 'loading') {
+    return (
+      <>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="calc(100vh - 64px)">
+          <CircularProgress />
+        </Box>
+      </>
+    );
+  }
+
   return (
     <>
-      <AppBar 
-        position="static" 
-        elevation={1}
-        sx={{
-          backgroundColor: 'white',
-          borderBottom: '1px solid #eaeaea',
-        }}
-      >
-        <Toolbar 
-          sx={{ 
-            justifyContent: 'space-between',
-            minHeight: '80px',
-            padding: '0 24px',
-          }}
-        >
-          <Logo />
-          <Box>
-            <Button
-              startIcon={
-                <AddIcon sx={{ 
-                  fontSize: '20px',
-                  transition: 'transform 0.2s ease-in-out',
-                  transform: showCreateForm ? 'rotate(45deg)' : 'rotate(0)',
-                }} />
-              }
-              variant="contained"
-              onClick={() => setShowCreateForm(!showCreateForm)}
-              sx={{
-                backgroundColor: 'black',
-                fontWeight: 600,
-                padding: '10px 24px',
-                borderRadius: '50px',
-                textTransform: 'none',
-                fontSize: '0.95rem',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                border: '2px solid black',
-                '&:hover': {
-                  backgroundColor: 'white',
-                  color: 'black',
-                  border: '2px solid black',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  transform: 'translateY(-1px)',
-                },
-                transition: 'all 0.2s ease-in-out',
-              }}
-            >
-              {showCreateForm ? 'Voir les sites' : 'Créer un site'}
-            </Button>
+      <Box sx={{ p: 3 }}>
+        {!session ? (
+          <Box 
+            display="flex" 
+            flexDirection="column" 
+            justifyContent="center" 
+            alignItems="center" 
+            minHeight="calc(100vh - 128px)"
+            gap={3}
+          >
+            <Typography variant="h4" component="h1">
+              Bienvenue sur WooSell
+            </Typography>
+            <Typography variant="body1" color="textSecondary" align="center">
+              Connectez-vous pour gérer vos sites WooCommerce
+            </Typography>
           </Box>
-        </Toolbar>
-      </AppBar>
+        ) : (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 4 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={handleCreateSite}
+              >
+                Nouveau site
+              </Button>
+            </Box>
 
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        {showCreateForm ? (
-          <CreateSiteForm
-            onSuccess={(response: ApiResponse<CreateSiteFormData>) => {
-              if (response.data) {
-                const newSite: Site = {
-                  _id: Date.now().toString(),
-                  name: response.data.name,
-                  domain: response.data.domain,
-                  productType: response.data.productType,
-                  createdAt: new Date().toISOString(),
-                  orderCount: 0,
-                  status: 'active'
-                };
+            {loading ? (
+              <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+                <CircularProgress />
+              </Box>
+            ) : sites.length === 0 ? (
+              <EmptySiteState onCreateClick={handleCreateSite} />
+            ) : (
+              <SiteGrid sites={sites} />
+            )}
+
+            <CreateSiteForm
+              open={showCreateForm}
+              onClose={() => setShowCreateForm(false)}
+              onSiteCreated={(newSite) => {
                 setSites([...sites, newSite]);
                 setShowCreateForm(false);
-              }
-            }}
-            onCancel={() => setShowCreateForm(false)}
-            onError={(error) => {
-              console.error('Error creating site:', error);
-            }}
-          />
-        ) : sites.length === 0 ? (
-          <EmptySiteState onCreateClick={() => setShowCreateForm(true)} />
-        ) : (
-          <Box>
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              mb: 4
-            }}>
-              <Typography variant="h5" component="h1">
-                Vos sites ({sites.length})
-              </Typography>
-            </Box>
-            <SiteGrid 
-              sites={sites} 
-              onSiteClick={(site) => {
-                // TODO: Implémenter la gestion du clic sur un site
-                console.log('Site clicked:', site);
-              }} 
+              }}
             />
-          </Box>
+          </>
         )}
-      </Container>
+      </Box>
     </>
   );
 }

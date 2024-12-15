@@ -13,15 +13,20 @@ import {
   InputAdornment,
   IconButton,
   MenuItem,
-  Link
+  Link,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Alert
 } from '@mui/material';
-import { Visibility, VisibilityOff, Language, Store, Key, Category, ArrowBack } from '@mui/icons-material';
+import { Visibility, VisibilityOff, Language, Store, Key, Category, ArrowBack, Close } from '@mui/icons-material';
+import axios from 'axios';
+import { loadStripe } from '@stripe/stripe-js';
 
 interface CreateSiteFormData {
   domain: string;
   name: string;
   password: string;
-  productType: string;
 }
 
 interface ApiResponse<T> {
@@ -32,211 +37,198 @@ interface ApiResponse<T> {
 }
 
 interface CreateSiteFormProps {
-  onSuccess?: (site: ApiResponse<CreateSiteFormData>) => void;
-  onError?: (error: Error) => void;
-  onCancel?: () => void;
+  open: boolean;
+  onClose: () => void;
+  onSiteCreated: (site: any) => void;
 }
 
-const CreateSiteForm: FC<CreateSiteFormProps> = ({ onSuccess, onError, onCancel }) => {
+const CreateSiteForm: FC<CreateSiteFormProps> = ({ open, onClose, onSiteCreated }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { register, handleSubmit, formState: { errors } } = useForm<CreateSiteFormData>();
+  const [error, setError] = useState<string | null>(null);
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<CreateSiteFormData>();
 
-  const onSubmit: SubmitHandler<CreateSiteFormData> = async (data) => {
+  const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setIsLoading(true);
+    setError('');
+
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sites`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
+      // Créer d'abord le site
+      const wooCommerceResponse = await axios.post('http://51.159.14.225:7999/v3/create_woo_instance', {
+        name: event.currentTarget.name.value,
+        domain: event.currentTarget.domain.value,
+        password: event.currentTarget.password.value,
+        thematic: "general",
+        target_audience: "all",
+        key_seo_term: "ecommerce"
+      }, {
+        timeout: 1800000 // 30 minutes
       });
 
-      const result: ApiResponse<CreateSiteFormData> = await response.json();
+      if (wooCommerceResponse.data) {
+        // Créer le site dans notre base de données
+        const siteResponse = await axios.post('/api/sites', {
+          name: event.currentTarget.name.value,
+          domain: event.currentTarget.domain.value,
+          wooCommerceDetails: wooCommerceResponse.data
+        });
 
-      if (!response.ok) {
-        throw new Error(result.error?.message || 'Échec de la création du site');
+        if (siteResponse.data) {
+          // Créer la session Stripe
+          const stripeResponse = await axios.post('/api/stripe/create-checkout-session', {
+            siteId: siteResponse.data.site._id,
+            planType: 'standard' // ou 'premium' selon votre logique
+          });
+
+          // Rediriger vers la page de paiement Stripe
+          const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+          if (stripe) {
+            await stripe.redirectToCheckout({
+              sessionId: stripeResponse.data.sessionId
+            });
+          }
+
+          onSiteCreated(siteResponse.data.site);
+          reset();
+          onClose();
+        }
       }
-
-      onSuccess?.(result);
     } catch (error) {
-      onError?.(error as Error);
+      console.error('Error creating site:', error);
+      if (axios.isAxiosError(error)) {
+        setError(error.response?.data?.message || error.message || 'Une erreur est survenue lors de la création du site');
+      } else {
+        setError('Une erreur inattendue est survenue');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleClickShowPassword = () => {
-    setShowPassword(!showPassword);
-  };
-
   return (
-    <Paper elevation={2} sx={{ p: 4, maxWidth: 600, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <Link
-          component="button"
-          onClick={onCancel}
+    <Dialog 
+      open={open} 
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: '12px',
+          m: { xs: 2, sm: 4 }
+        }
+      }}
+    >
+      <DialogTitle sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        pb: 1
+      }}>
+        <Typography variant="h6" component="h2">
+          Créer un nouveau site
+        </Typography>
+        <IconButton onClick={onClose} size="small">
+          <Close />
+        </IconButton>
+      </DialogTitle>
+      
+      <DialogContent>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        
+        <Box
+          component="form"
+          onSubmit={handleFormSubmit}
           sx={{
             display: 'flex',
-            alignItems: 'center',
-            color: 'text.secondary',
-            textDecoration: 'none',
-            '&:hover': {
-              color: 'primary.main',
-            },
+            flexDirection: 'column',
+            gap: 3,
+            pt: 1
           }}
         >
-          <ArrowBack sx={{ mr: 1 }} />
-          Retour à la liste
-        </Link>
-      </Box>
+          <TextField
+            label="Nom du site"
+            {...register('name', { required: 'Le nom du site est requis' })}
+            error={!!errors.name}
+            helperText={errors.name?.message}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Store />
+                </InputAdornment>
+              ),
+            }}
+          />
 
-      <Typography variant="h5" component="h2" gutterBottom sx={{ mb: 4 }}>
-        Créer un nouveau site
-      </Typography>
+          <TextField
+            label="Nom de domaine"
+            {...register('domain', { 
+              required: 'Le domaine est requis',
+              pattern: {
+                value: /^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]\.([a-zA-Z]{2,})+$/,
+                message: 'Format de domaine invalide. Exemple: mon-site.com'
+              }
+            })}
+            error={!!errors.domain}
+            helperText={errors.domain?.message}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Language />
+                </InputAdornment>
+              ),
+            }}
+          />
 
-      <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
-        <TextField
-          {...register('domain', { 
-            required: 'Le domaine est requis',
-            pattern: {
-              value: /^[a-zA-Z0-9][a-zA-Z0-9-]*\.([a-zA-Z]{2,}|[a-zA-Z0-9-]{2,}\.[a-zA-Z]{2,})$/,
-              message: 'Format de domaine invalide. Exemple: monsite.com'
-            }
-          })}
-          margin="normal"
-          required
-          fullWidth
-          id="domain"
-          label="Nom de domaine"
-          placeholder="monsite.com"
-          error={!!errors.domain}
-          helperText={errors.domain?.message || 'Exemple: monsite.com'}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Language color="action" />
-              </InputAdornment>
-            ),
-          }}
-          disabled={isLoading}
-        />
+          <TextField
+            type={showPassword ? 'text' : 'password'}
+            label="Mot de passe administrateur"
+            {...register('password', { 
+              required: 'Le mot de passe est requis',
+              minLength: {
+                value: 8,
+                message: 'Le mot de passe doit contenir au moins 8 caractères'
+              }
+            })}
+            error={!!errors.password}
+            helperText={errors.password?.message}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Key />
+                </InputAdornment>
+              ),
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="toggle password visibility"
+                    onClick={() => setShowPassword(!showPassword)}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
 
-        <TextField
-          {...register('name', { 
-            required: 'Le nom est requis',
-            minLength: {
-              value: 2,
-              message: 'Le nom doit contenir au moins 2 caractères'
-            }
-          })}
-          margin="normal"
-          required
-          fullWidth
-          id="name"
-          label="Nom du site"
-          error={!!errors.name}
-          helperText={errors.name?.message}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Store color="action" />
-              </InputAdornment>
-            ),
-          }}
-          disabled={isLoading}
-        />
-
-        <TextField
-          {...register('password', { 
-            required: 'Le mot de passe est requis',
-            minLength: {
-              value: 8,
-              message: 'Le mot de passe doit contenir au moins 8 caractères'
-            }
-          })}
-          margin="normal"
-          required
-          fullWidth
-          id="password"
-          label="Mot de passe"
-          type={showPassword ? 'text' : 'password'}
-          error={!!errors.password}
-          helperText={errors.password?.message}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Key color="action" />
-              </InputAdornment>
-            ),
-            endAdornment: (
-              <InputAdornment position="end">
-                <IconButton
-                  aria-label="toggle password visibility"
-                  onClick={handleClickShowPassword}
-                  edge="end"
-                >
-                  {showPassword ? <VisibilityOff /> : <Visibility />}
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-          disabled={isLoading}
-        />
-
-        <TextField
-          {...register('productType', { 
-            required: 'Le type de produit est requis' 
-          })}
-          margin="normal"
-          required
-          fullWidth
-          id="productType"
-          label="Type de produit"
-          select
-          error={!!errors.productType}
-          helperText={errors.productType?.message}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Category color="action" />
-              </InputAdornment>
-            ),
-          }}
-          disabled={isLoading}
-        >
-          <MenuItem value="hairbrush">Brosse à cheveux</MenuItem>
-          <MenuItem value="clothing">Vêtements</MenuItem>
-          <MenuItem value="electronics">Électronique</MenuItem>
-          <MenuItem value="jewelry">Bijoux</MenuItem>
-          <MenuItem value="beauty">Beauté</MenuItem>
-          <MenuItem value="home">Maison</MenuItem>
-          <MenuItem value="sports">Sports</MenuItem>
-          <MenuItem value="toys">Jouets</MenuItem>
-          <MenuItem value="books">Livres</MenuItem>
-          <MenuItem value="other">Autre</MenuItem>
-        </TextField>
-
-        <Button
-          type="submit"
-          fullWidth
-          variant="contained"
-          size="large"
-          sx={{ mt: 4 }}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <>
-              <CircularProgress size={24} sx={{ mr: 1 }} />
-              Création en cours...
-            </>
-          ) : (
-            'Créer le site'
-          )}
-        </Button>
-      </Box>
-    </Paper>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={isLoading}
+            fullWidth
+            sx={{ mt: 2 }}
+            startIcon={isLoading ? <CircularProgress size={20} /> : <Store />}
+          >
+            Créer le site
+          </Button>
+        </Box>
+      </DialogContent>
+    </Dialog>
   );
 };
 
