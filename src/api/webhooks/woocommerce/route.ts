@@ -15,7 +15,6 @@ interface WebhookPayload {
 }
 
 // POST /api/webhooks/woocommerce - Recevoir les webhooks WooCommerce
-
 'use server';
 
 export async function POST(request: Request) {

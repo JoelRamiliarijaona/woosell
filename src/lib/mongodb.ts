@@ -13,7 +13,7 @@ type GlobalMongooseType = {
 };
 
 declare global {
-  var mongoose: GlobalMongooseType;
+  let mongoose: GlobalMongooseType;
 }
 
 if (!global.mongoose) {
