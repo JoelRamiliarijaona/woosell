@@ -1,7 +1,8 @@
 import KeycloakProvider from 'next-auth/providers/keycloak';
 import NextAuth from 'next-auth';
+import { NextResponse } from 'next/server';
 
-const handler = NextAuth({
+const authOptions = {
   providers: [
     KeycloakProvider({
       clientId: process.env.KEYCLOAK_ID || '',
@@ -26,7 +27,20 @@ const handler = NextAuth({
   pages: {
     signIn: '/auth/login',
   },
-});
+};
 
-export const GET = handler;
-export const POST = handler;
+const handler = NextAuth(authOptions);
+
+// Ajouter des headers de cache pour l'endpoint de session
+export async function GET(request: Request) {
+  const response = await handler(request);
+  
+  // Si c'est une requête de session, ajouter des headers de cache
+  if (request.url.includes('/api/auth/session')) {
+    response.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=60');
+  }
+  
+  return response;
+}
+
+export { handler as POST, handler as HEAD };
