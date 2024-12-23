@@ -6,7 +6,14 @@ import {
   Grid,
   IconButton,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Card,
+  CardContent,
+  Tooltip
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -15,11 +22,17 @@ import {
   Store,
   Euro,
   Receipt,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Language,
+  AccessTime,
+  Settings
 } from '@mui/icons-material';
+import { Site } from '../page';
+import { formatDistanceToNow, format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 interface SiteDetailsProps {
-  site: Site | null;
+  site: Site;
   onClose: () => void;
   open: boolean;
 }
@@ -27,350 +40,250 @@ interface SiteDetailsProps {
 interface BillingInfo {
   currentMonth: {
     orderCount: number;
-    amount: number;
+    revenue: number;
     startDate: string;
     endDate: string;
   };
   previousMonth: {
     orderCount: number;
-    amount: number;
+    revenue: number;
     startDate: string;
     endDate: string;
   };
+  subscription: {
+    plan: string;
+    status: string;
+    currentPeriodEnd: string;
+  };
 }
 
-const SiteDetails: FC<SiteDetailsProps> = ({ site, onClose, open }) => {
-  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
+const SiteDetails: React.FC<SiteDetailsProps> = ({ site, onClose, open }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (site && open) {
+    const fetchBillingInfo = async () => {
+      if (!site) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`/api/sites/${site._id}/billing`);
+        if (!response.ok) throw new Error('Erreur lors de la récupération des informations de facturation');
+        
+        const data = await response.json();
+        setBillingInfo(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (open) {
       fetchBillingInfo();
     }
   }, [site, open]);
 
-  const fetchBillingInfo = async () => {
+  const handleDelete = async () => {
     if (!site) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      const response = await fetch(`/api/sites/${site._id}/billing`, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+      const response = await fetch(`/api/sites/${site._id}`, {
+        method: 'DELETE',
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch billing information');
-      }
+      if (!response.ok) throw new Error('Erreur lors de la suppression du site');
       
-      const data = await response.json();
-      setBillingInfo(data);
+      setDeleteDialogOpen(false);
+      onClose();
     } catch (err) {
-      console.error('Error fetching billing info:', err);
-      setError('Une erreur est survenue lors du chargement des informations de facturation');
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue lors de la suppression');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!site) return;
-    
-    setDeleteLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch(`/api/sites/${site._id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete site');
-      }
-      
-      onClose();
-      window.location.reload(); // Rafraîchir la page pour mettre à jour la liste
-    } catch (err) {
-      console.error('Error deleting site:', err);
-      setError('Une erreur est survenue lors de la suppression du site');
-    } finally {
-      setDeleteLoading(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
   if (!site) return null;
 
-  const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'default' => {
-    switch (status) {
-      case 'active':
-        return 'success';
-      case 'pending':
-        return 'warning';
-      case 'error':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
-
   return (
-    <>
-      <Dialog
-        open={open}
-        onClose={onClose}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-          }
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          pb: 2
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Store sx={{ color: 'primary.main' }} />
-            <Typography variant="h6">{site.name}</Typography>
-            <Chip
-              size="small"
-              label={site.status}
-              color={getStatusColor(site.status)}
-              sx={{ ml: 1 }}
-            />
-          </Box>
-          <IconButton onClick={onClose} size="small">
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 2,
+          maxHeight: '90vh'
+        }
+      }}
+    >
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+        <Box display="flex" alignItems="center">
+          <Store sx={{ mr: 1 }} />
+          <Typography variant="h6" component="span">
+            {site.name}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small">
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
 
-        <DialogContent sx={{ pt: 3 }}>
-          <Grid container spacing={3}>
-            {/* Informations du site */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                Informations du site
-              </Typography>
-              <Box sx={{ p: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Domaine
-                    </Typography>
-                    <Typography sx={{ display: 'block', wordBreak: 'break-all' }}>
-                      {site.domain}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Type de produit
-                    </Typography>
-                    <Typography>{site.productType}</Typography>
-                  </Grid>
-                </Grid>
-              </Box>
-            </Grid>
-
-            {/* Accès rapides */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                Accès rapides
-              </Typography>
-              <Box sx={{ p: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<Dashboard />}
-                      href={`https://${site.domain}/wp-admin`}
-                      target="_blank"
-                      sx={{ justifyContent: 'flex-start' }}
-                    >
-                      WordPress Admin
-                    </Button>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<ShoppingCart />}
-                      href={`https://${site.domain}/wp-admin/admin.php?page=wc-admin`}
-                      target="_blank"
-                      sx={{ justifyContent: 'flex-start' }}
-                    >
-                      WooCommerce Dashboard
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Box>
-            </Grid>
-
-            {/* Facturation */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                Facturation
-              </Typography>
-              <Box sx={{ p: 2 }}>
-                <Grid container spacing={3}>
-                  {/* Mois en cours */}
-                  <Grid item xs={12} sm={6}>
-                    <Box sx={{ 
-                      p: 2, 
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      height: '100%'
-                    }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Mois en cours
-                      </Typography>
-                      {loading ? (
-                        <Typography variant="body2" color="text.secondary">
-                          Chargement...
-                        </Typography>
-                      ) : error ? (
-                        <Typography variant="body2" color="error.main">
-                          {error}
-                        </Typography>
-                      ) : billingInfo ? (
-                        <>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <ShoppingCart sx={{ mr: 1, color: 'text.secondary' }} />
-                            <Typography>
-                              {billingInfo.currentMonth.orderCount} commandes
-                            </Typography>
-                          </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Euro sx={{ mr: 1, color: 'text.secondary' }} />
-                            <Typography>
-                              {billingInfo.currentMonth.amount.toFixed(2)}€
-                            </Typography>
-                          </Box>
-                        </>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          Aucune donnée disponible
-                        </Typography>
-                      )}
-                    </Box>
-                  </Grid>
-
-                  {/* Mois précédent */}
-                  <Grid item xs={12} sm={6}>
-                    <Box sx={{ 
-                      p: 2, 
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      height: '100%',
-                      bgcolor: 'action.hover'
-                    }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Mois précédent
-                      </Typography>
-                      {loading ? (
-                        <Typography variant="body2" color="text.secondary">
-                          Chargement...
-                        </Typography>
-                      ) : error ? (
-                        <Typography variant="body2" color="error.main">
-                          {error}
-                        </Typography>
-                      ) : billingInfo ? (
-                        <>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <ShoppingCart sx={{ mr: 1, color: 'text.secondary' }} />
-                            <Typography>
-                              {billingInfo.previousMonth.orderCount} commandes
-                            </Typography>
-                          </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Euro sx={{ mr: 1, color: 'text.secondary' }} />
-                            <Typography>
-                              {billingInfo.previousMonth.amount.toFixed(2)}€
-                            </Typography>
-                          </Box>
-                        </>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          Aucune donnée disponible
-                        </Typography>
-                      )}
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Box>
-            </Grid>
-          </Grid>
-        </DialogContent>
-
-        <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', p: 2 }}>
-          <Button
-            variant="outlined"
-            color="error"
-            startIcon={<DeleteIcon />}
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={deleteLoading}
-          >
-            Supprimer le site
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Dialogue de confirmation de suppression */}
-      <Dialog
-        open={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          Confirmer la suppression
-        </DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mt: 2 }}>
-            Êtes-vous sûr de vouloir supprimer le site "{site?.name}" ?
-            Cette action est irréversible et supprimera également toutes les données associées.
+      <DialogContent dividers>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
           </Alert>
+        )}
+
+        <Grid container spacing={3}>
+          {/* Informations générales */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Informations générales
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <Language sx={{ mr: 1, color: 'text.secondary' }} />
+                      <Typography variant="body2">
+                        {site.domain}
+                      </Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                      <Typography variant="body2">
+                        Créé {formatDistanceToNow(new Date(site.createdAt), { addSuffix: true, locale: fr })}
+                      </Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center">
+                      <Settings sx={{ mr: 1, color: 'text.secondary' }} />
+                      <Typography variant="body2">
+                        Status: {site.status}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <ShoppingCart sx={{ mr: 1, color: 'text.secondary' }} />
+                      <Typography variant="body2">
+                        {site.stats.orderCount} commandes
+                      </Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <Euro sx={{ mr: 1, color: 'text.secondary' }} />
+                      <Typography variant="body2">
+                        Revenu total: {site.stats.revenue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                      </Typography>
+                    </Box>
+                    {site.stats.lastSync && (
+                      <Box display="flex" alignItems="center">
+                        <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2">
+                          Dernière synchronisation: {formatDistanceToNow(new Date(site.stats.lastSync), { addSuffix: true, locale: fr })}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Facturation */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Facturation
+                </Typography>
+                {loading ? (
+                  <Box display="flex" justifyContent="center" p={3}>
+                    <CircularProgress />
+                  </Box>
+                ) : billingInfo ? (
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Plan actuel
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {site.billing.plan}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Status: {site.billing.status}
+                      </Typography>
+                      {site.billing.currentPeriodEnd && (
+                        <Typography variant="body2" color="text.secondary">
+                          Renouvellement: {format(new Date(site.billing.currentPeriodEnd), 'dd/MM/yyyy')}
+                        </Typography>
+                      )}
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Ce mois-ci
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Commandes: {billingInfo.currentMonth.orderCount}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Revenu: {billingInfo.currentMonth.revenue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Aucune information de facturation disponible
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </DialogContent>
+
+      <DialogActions sx={{ justifyContent: 'space-between', px: 3, py: 2 }}>
+        <Button
+          startIcon={<DeleteIcon />}
+          color="error"
+          onClick={() => setDeleteDialogOpen(true)}
+          disabled={loading}
+        >
+          Supprimer le site
+        </Button>
+        <Button onClick={onClose} color="primary">
+          Fermer
+        </Button>
+      </DialogActions>
+
+      {/* Dialog de confirmation de suppression */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Confirmer la suppression</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Êtes-vous sûr de vouloir supprimer le site {site.name} ? Cette action est irréversible.
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() => setShowDeleteConfirm(false)}
-            disabled={deleteLoading}
-          >
+          <Button onClick={() => setDeleteDialogOpen(false)}>
             Annuler
           </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleDelete}
-            disabled={deleteLoading}
-            startIcon={deleteLoading ? <CircularProgress size={20} /> : <DeleteIcon />}
-          >
-            {deleteLoading ? 'Suppression...' : 'Supprimer'}
+          <Button onClick={handleDelete} color="error" disabled={loading}>
+            {loading ? <CircularProgress size={24} /> : 'Supprimer'}
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </Dialog>
   );
 };
 

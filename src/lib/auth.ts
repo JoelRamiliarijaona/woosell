@@ -1,9 +1,8 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import type { NextAuthOptions, User } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
-import type { AdapterUser } from 'next-auth/adapters';
 import KeycloakProvider from 'next-auth/providers/keycloak';
-import { connectToDatabase } from './mongodb';
+import { getMongoDb } from './mongodb';
 
 interface KeycloakProfile {
   sub: string;
@@ -24,11 +23,10 @@ interface ExtendedUser extends User {
 }
 
 interface ExtendedJWT extends JWT {
-  id: string;
+  sub: string;
   roles?: string[];
   accessToken?: string;
   refreshToken?: string;
-  sub?: string;
 }
 
 interface ExtendedSession {
@@ -36,10 +34,6 @@ interface ExtendedSession {
   roles: string[];
   accessToken: string;
   expires: string;
-}
-
-interface SessionWithRoles {
-  roles?: string[];
 }
 
 interface UserSession {
@@ -73,39 +67,53 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 24 * 60 * 60
+    maxAge: 24 * 60 * 60, // 24 heures
+    updateAge: 5 * 60     // 5 minutes
   },
   callbacks: {
     async signIn({ user, account, profile }) {
       try {
-        if (!profile?.sub) {
+        const keycloakProfile = profile as KeycloakProfile;
+        if (!keycloakProfile?.sub) {
           console.error('No Keycloak ID (sub) found in profile');
           return false;
         }
 
-        const { db } = await connectToDatabase();
-        if (!db) {
-          console.error('Database connection failed');
-          return false;
-        }
+        const db = await getMongoDb();
 
         // Rechercher l'utilisateur existant
-        const existingUser = await db.collection('users').findOne({ keycloakId: profile.sub });
+        const existingUser = await db.collection('users').findOne({ keycloakId: keycloakProfile.sub });
         console.log('Existing user:', existingUser);
 
         if (!existingUser) {
           // Créer un nouvel utilisateur
           const newUser = {
-            keycloakId: profile.sub,
-            email: profile.email,
-            name: profile.name || profile.preferred_username,
-            role: 'user',
+            keycloakId: keycloakProfile.sub,
+            email: keycloakProfile.email,
+            name: keycloakProfile.name ?? keycloakProfile.preferred_username ?? keycloakProfile.email ?? keycloakProfile.sub,
+            roles: keycloakProfile.realm_access?.roles || ['user'],
             createdAt: new Date(),
             updatedAt: new Date()
           };
 
           const result = await db.collection('users').insertOne(newUser);
           console.log('New user created:', result);
+        } else {
+          // Mettre à jour les rôles si nécessaire
+          const currentRoles = existingUser.roles || ['user'];
+          const newRoles = keycloakProfile.realm_access?.roles || ['user'];
+          
+          if (JSON.stringify(currentRoles.sort()) !== JSON.stringify(newRoles.sort())) {
+            await db.collection('users').updateOne(
+              { keycloakId: keycloakProfile.sub },
+              { 
+                $set: { 
+                  roles: newRoles,
+                  updatedAt: new Date()
+                }
+              }
+            );
+          }
         }
 
         return true;
@@ -119,6 +127,7 @@ export const authOptions: NextAuthOptions = {
         if (profile) {
           console.log('JWT Profile:', profile);
           token.sub = profile.sub;
+          token.roles = profile.realm_access?.roles || ['user'];
         }
         if (account) {
           token.accessToken = account.access_token;
@@ -141,29 +150,34 @@ export const authOptions: NextAuthOptions = {
           throw new Error('No sub in token');
         }
 
-        const sessionWithId = {
+        const sessionWithRoles = {
           ...session,
           user: {
             ...session.user,
-            id: extendedToken.sub
+            id: extendedToken.sub,
+            roles: extendedToken.roles || ['user']
           },
           accessToken: extendedToken.accessToken
         };
 
-        console.log('Final Session:', sessionWithId);
-        return sessionWithId;
+        console.log('Final Session:', sessionWithRoles);
+        return sessionWithRoles;
       } catch (error) {
         console.error('Error in session callback:', error);
         return session;
       }
     },
     async redirect({ url, baseUrl }) {
+      // Si l'URL commence par le baseUrl (notre application)
       if (url.startsWith(baseUrl)) {
-        if (url.includes('/api/')) {
-          return `${baseUrl}/dashboard`;
+        // Si c'est un callback d'authentification, rediriger vers la page d'accueil
+        if (url.includes('/api/auth/callback')) {
+          return baseUrl;
         }
+        // Sinon retourner l'URL demandée
         return url;
       }
+      // Pour toute autre URL externe, rediriger vers la page d'accueil
       return baseUrl;
     }
   },
@@ -172,13 +186,7 @@ export const authOptions: NextAuthOptions = {
     signIn: '/auth/signin',
     signOut: '/auth/signout',
     error: '/auth/error',
-  },
-  handlers: [
-    {
-      page: '/api/auth/verify-token',
-      handler: verifyToken,
-    },
-  ],
+  }
 };
 
 export async function verifyToken(request: Request): Promise<KeycloakProfile | null> {
@@ -192,22 +200,40 @@ export async function verifyToken(request: Request): Promise<KeycloakProfile | n
       issuer: process.env.KEYCLOAK_ISSUER
     });
 
-    return payload as KeycloakProfile;
+    // Cast to unknown first, then validate fields before casting to KeycloakProfile
+    const profile = payload as unknown as { [key: string]: any };
+    
+    if (!profile.sub || typeof profile.sub !== 'string' ||
+        !profile.email || typeof profile.email !== 'string' ||
+        !profile.name || typeof profile.name !== 'string' ||
+        !profile.preferred_username || typeof profile.preferred_username !== 'string' ||
+        typeof profile.email_verified !== 'boolean') {
+      console.error('Invalid token payload: missing required fields', profile);
+      return null;
+    }
+
+    const keycloakProfile: KeycloakProfile = {
+      sub: profile.sub,
+      email: profile.email,
+      email_verified: profile.email_verified,
+      name: profile.name,
+      preferred_username: profile.preferred_username,
+      given_name: profile.given_name || '',
+      family_name: profile.family_name || '',
+      realm_access: profile.realm_access
+    };
+
+    return keycloakProfile;
   } catch (error) {
     console.error('Error verifying token:', error);
     return null;
   }
 }
 
-export async function getCurrentUser(): Promise<UserSession | null> {
-  const session = await getServerSession(authOptions);
-  return session as UserSession;
-}
-
 export function isAdmin(session: UserSession | null): boolean {
-  return session?.user?.roles?.includes("admin") ?? false;
+  return session?.user?.roles?.includes('admin') || false;
 }
 
 export function hasRole(session: UserSession | null, role: string): boolean {
-  return session?.user?.roles?.includes(role) ?? false;
+  return session?.user?.roles?.includes(role) || false;
 }

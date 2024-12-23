@@ -1,76 +1,42 @@
-import crypto from 'crypto';
+import { SiteModel } from './models/website';
+import mongoose from 'mongoose';
 
-interface WooCommerceWebhookHeaders {
-  'x-wc-webhook-signature': string;
-  'x-wc-webhook-source': string;
-  'x-wc-webhook-topic': string;
-  'x-wc-webhook-resource': string;
-  'x-wc-webhook-event': string;
-  'x-wc-webhook-id': string;
+const API_TIMEOUT = 300000; // 5 minutes
+
+interface WooCommerceApiResponse {
+  storeId: string;
+  consumerKey: string;
+  consumerSecret: string;
+  [key: string]: any;
 }
 
-interface WooCommerceResponse<T> {
-  data: T;
-  status: number;
-}
-
-interface WooCommerceError {
-  code: string;
-  message: string;
-  data?: unknown;
-}
-
-interface WooCommerceProduct {
-  id: number;
-  name: string;
-  price: string;
-  regular_price: string;
-  sale_price: string;
-  status: string;
-}
-
-interface WooCommerceOrder {
-  id: number;
-  status: string;
-  total: string;
-  billing: {
-    first_name: string;
-    last_name: string;
-    email: string;
+interface CreateSiteResponse {
+  success: boolean;
+  data?: {
+    storeId: string;
+    consumerKey: string;
+    consumerSecret: string;
+    _id: string;
+    name: string;
+    domain: string;
+    stats: {
+      orderCount: number;
+      revenue: number;
+      lastSync: Date | null;
+    };
   };
-  line_items: Array<{
-    product_id: number;
-    quantity: number;
-    total: string;
-  }>;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
 }
 
-export async function verifyWooCommerceWebhook(request: Request): Promise<boolean> {
-  try {
-    const signature = request.headers.get('x-wc-webhook-signature');
-    if (!signature) {
-      return false;
-    }
-
-    const payload = await request.text();
-    const secret = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
-    
-    if (!secret) {
-      throw new Error('WOOCOMMERCE_WEBHOOK_SECRET is not defined');
-    }
-
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(payload);
-    const calculatedSignature = hmac.digest('base64');
-
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(calculatedSignature)
-    );
-  } catch (error) {
-    console.error('Error verifying webhook:', error);
-    return false;
-  }
+interface CreateSiteData {
+  domain: string;
+  name: string;
+  password: string;
+  userId: string;
 }
 
 export class WooCommerceClient {
@@ -88,124 +54,141 @@ export class WooCommerceClient {
     this.siteUrl = siteUrl;
   }
 
-  private async request<T>(
-    endpoint: string,
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    data?: unknown
-  ): Promise<WooCommerceResponse<T>> {
-    const url = new URL(`${this.siteUrl}/wp-json/wc/v3/${endpoint}`);
-    url.searchParams.append('consumer_key', this.consumerKey);
-    url.searchParams.append('consumer_secret', this.consumerSecret);
+  async createWooCommerceSite(siteData: CreateSiteData): Promise<CreateSiteResponse> {
+    const timeoutId = setTimeout(() => {
+      throw new Error('API request timeout');
+    }, API_TIMEOUT);
 
-    const response = await fetch(url.toString(), {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: data ? JSON.stringify(data) : undefined,
-    });
-
-    if (!response.ok) {
-      const error: WooCommerceError = await response.json();
-      throw new Error(error.message);
-    }
-
-    return response.json();
-  }
-
-  async setupOrderWebhook(backendUrl: string): Promise<void> {
     try {
-      const endpoint = `${this.siteUrl}/wp-json/wc/v3/webhooks`;
-      const webhookData = {
-        name: "Commandes finalisées",
-        topic: "order.completed",
-        delivery_url: `${backendUrl}/api/webhooks/woocommerce`,
-        status: "active"
+      const apiUrl = 'http://51.159.99.74:7999/v3/create_woo_instance';
+      console.log('Creating WooCommerce site at:', apiUrl);
+
+      const requestBody = {
+        domain: siteData.domain,
+        name: siteData.name,
+        password: siteData.password,
+        thematic: "site e-commerce",
+        target_audience: "shop",
+        key_seo_term: "Shop"
       };
 
-      const auth = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(webhookData)
-      });
+      console.log('Request body:', { ...requestBody, password: '***' });
 
-      if (!response.ok) {
-        const error: WooCommerceError = await response.json();
-        throw new Error(`Failed to create webhook: ${error.message}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Accept': '*/*',
+            'Content-Type': 'application/json',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache'
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+          keepalive: true
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          console.error('API request failed:', {
+            status: response.status,
+            statusText: response.statusText
+          });
+
+          const errorText = await response.text();
+          console.error('Error response:', errorText);
+
+          return {
+            success: false,
+            error: {
+              code: 'API_ERROR',
+              message: `La requête a échoué avec le statut ${response.status}: ${response.statusText}`,
+              details: {
+                status: response.status,
+                response: errorText
+              }
+            }
+          };
+        }
+
+        const data = await response.json();
+        console.log('API Response:', data);
+
+        // Sauvegarder le site dans la base de données
+        const site = new SiteModel({
+          storeId: siteData.domain,
+          type: 'shop',
+          apiHost: `https://${siteData.domain}`,
+          apiKey: data.consumerKey || '',
+          apiSecret: data.consumerSecret || '',
+          name: siteData.name,
+          provider: 'woo',
+          userId: siteData.userId,
+          status: 'pending',
+          createdAt: new Date(),
+          stats: {
+            orderCount: 0,
+            revenue: 0,
+            lastSync: new Date()
+          }
+        });
+
+        try {
+          await site.save();
+          console.log('Site saved to database:', site);
+
+          return {
+            success: true,
+            data: {
+              storeId: site.storeId,
+              consumerKey: site.apiKey,
+              consumerSecret: site.apiSecret,
+              _id: site._id.toString(),
+              name: site.name,
+              domain: siteData.domain,
+              stats: site.stats
+            }
+          };
+        } catch (dbError) {
+          console.error('Error saving site to database:', dbError);
+          return {
+            success: false,
+            error: {
+              code: 'DATABASE_ERROR',
+              message: 'Erreur lors de la sauvegarde du site',
+              details: dbError
+            }
+          };
+        }
+
+      } catch (error) {
+        clearTimeout(timeoutId);
+        console.error('Error in API request:', error);
+        return {
+          success: false,
+          error: {
+            code: 'API_ERROR',
+            message: error instanceof Error ? error.message : 'Une erreur inconnue est survenue',
+            details: error
+          }
+        };
       }
 
-      console.log('Webhook configured successfully for site:', this.siteUrl);
     } catch (error) {
-      console.error('Error setting up webhook:', error);
-      throw error;
+      clearTimeout(timeoutId);
+      console.error('Error in createWooCommerceSite:', error);
+      return {
+        success: false,
+        error: {
+          code: 'WOOCOMMERCE_API_ERROR',
+          message: error instanceof Error ? error.message : 'Une erreur inconnue est survenue',
+          details: error
+        }
+      };
     }
-  }
-
-  async createWooCommerceSite(siteData: {
-    domain: string;
-    name: string;
-    password: string;
-    productType: string;
-  }): Promise<WooCommerceResponse<unknown>> {
-    try {
-      const response = await fetch('http://104.21.30.216:7999/create-woocommerce', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(siteData)
-      });
-
-      if (!response.ok) {
-        const error: WooCommerceError = await response.json();
-        throw new Error(`Failed to create WooCommerce site: ${error.message}`);
-      }
-
-      const data = await response.json();
-      
-      // Une fois le site créé, configurer le webhook
-      if (data.success) {
-        await this.setupOrderWebhook(
-          process.env.BACKEND_URL || 'http://localhost:3000',
-        );
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error creating WooCommerce site:', error);
-      throw error;
-    }
-  }
-
-  // Orders
-  async getOrders(): Promise<WooCommerceResponse<WooCommerceOrder[]>> {
-    return this.request<WooCommerceOrder[]>('orders');
-  }
-
-  async getOrder(orderId: number): Promise<WooCommerceResponse<WooCommerceOrder>> {
-    return this.request<WooCommerceOrder>(`orders/${orderId}`);
-  }
-
-  // Products
-  async getProducts(): Promise<WooCommerceResponse<WooCommerceProduct[]>> {
-    return this.request<WooCommerceProduct[]>('products');
-  }
-
-  async getProduct(productId: number): Promise<WooCommerceResponse<WooCommerceProduct>> {
-    return this.request<WooCommerceProduct>(`products/${productId}`);
-  }
-
-  // Customers
-  async getCustomers(): Promise<WooCommerceResponse<unknown[]>> {
-    return this.request<unknown[]>('customers');
-  }
-
-  async getCustomer(customerId: number): Promise<WooCommerceResponse<unknown>> {
-    return this.request<unknown>(`customers/${customerId}`);
   }
 }

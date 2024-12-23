@@ -25,7 +25,6 @@ export async function middleware(request: NextRequest) {
     // Assurer que les cookies sont correctement configurés pour l'authentification
     if (pathname.startsWith('/api/auth')) {
       response.headers.set('Cache-Control', 'no-store, max-age=0');
-      response.headers.set('Set-Cookie', `next-auth.state=; Path=/; HttpOnly; SameSite=Lax; ${process.env.NODE_ENV === 'production' ? 'Secure;' : ''}`);
     }
     return response;
   }
@@ -34,17 +33,15 @@ export async function middleware(request: NextRequest) {
     // Vérifier le token
     const session = await getToken({ req: request }) as Session | null;
 
-    // Si pas de token et route protégée, rediriger vers l'API de connexion
+    // Si pas de token et route protégée, rediriger vers la page d'accueil
     if (!session) {
-      const signInUrl = new URL('/api/auth/signin', request.url);
-      signInUrl.searchParams.set('callbackUrl', request.url);
-      return NextResponse.redirect(signInUrl);
+      return NextResponse.redirect(new URL('/', request.url));
     }
 
     // Protection des routes admin
     if (request.nextUrl.pathname.startsWith('/admin')) {
       if (!session.roles?.includes('admin')) {
-        return NextResponse.redirect(new URL('/unauthorized', request.url));
+        return NextResponse.redirect(new URL('/', request.url));
       }
     }
 
@@ -55,9 +52,18 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Autoriser la requête avec le token
+    // Autoriser la requête avec le token et ajouter du cache
     const response = NextResponse.next();
-    response.headers.set('Cache-Control', 'no-store, max-age=0');
+    
+    // Ajouter du cache pour les requêtes API
+    if (pathname.startsWith('/api/')) {
+      // Cache de 5 minutes pour les requêtes API
+      response.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=60');
+    } else {
+      // Pas de cache pour les autres routes
+      response.headers.set('Cache-Control', 'no-store, max-age=0');
+    }
+    
     return response;
 
   } catch (error) {

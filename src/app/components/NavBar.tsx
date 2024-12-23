@@ -6,6 +6,7 @@ import Logo from './Logo';
 
 export default function NavBar() {
   const { data: session } = useSession();
+  console.log(session)
 
   const handleLogin = () => {
     const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL;
@@ -13,46 +14,23 @@ export default function NavBar() {
     const clientId = process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID;
     const redirectUri = encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/keycloak`);
     
-    // Supprimer les cookies existants
-    document.cookie.split(';').forEach(cookie => {
-      const [name] = cookie.split('=');
-      if (name.trim().startsWith('KEYCLOAK_') || name.trim().startsWith('next-auth')) {
-        document.cookie = `${name.trim()}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.parapluigeiement.com`;
-        document.cookie = `${name.trim()}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
-      }
-    });
-
     // Construire l'URL avec les paramètres nécessaires
     const loginUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/auth?` +
       `client_id=${clientId}` +
       `&response_type=code` +
       `&scope=openid%20email%20profile` +
-      `&redirect_uri=${redirectUri}` +
-      `&prompt=login`;
+      `&redirect_uri=${redirectUri}`;
     
     window.location.href = loginUrl;
   };
 
   const handleLogout = async () => {
     try {
-      const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL;
-      const realm = process.env.NEXT_PUBLIC_KEYCLOAK_REALM;
-      const redirectUri = encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL}`);
-      
       // Déconnexion de NextAuth
-      await signOut({ redirect: false });
-
-      // Supprimer tous les cookies
-      document.cookie.split(';').forEach(cookie => {
-        const [name] = cookie.split('=');
-        if (name.trim().startsWith('KEYCLOAK_') || name.trim().startsWith('next-auth')) {
-          document.cookie = `${name.trim()}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.parapluigeiement.com`;
-          document.cookie = `${name.trim()}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
-        }
+      await signOut({ 
+        callbackUrl: process.env.NEXT_PUBLIC_APP_URL,
+        redirect: true 
       });
-
-      // Rediriger vers la page de déconnexion de Keycloak
-      window.location.href = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/logout?redirect_uri=${redirectUri}`;
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error);
     }

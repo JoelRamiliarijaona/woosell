@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Box, Grid, Card, CardContent, Typography, Button, Chip } from '@mui/material';
-import { Store, Language, Timeline } from '@mui/icons-material';
+import { useState, useEffect, useCallback } from 'react';
+import { Box, Grid, Card, CardContent, Typography, Button, Chip, IconButton, Tooltip } from '@mui/material';
+import { Store, Language, Timeline, Refresh } from '@mui/icons-material';
 
 interface Site {
   _id: string;
@@ -23,35 +23,47 @@ interface Site {
 
 export default function SiteList() {
   const [sites, setSites] = useState<Site[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  const fetchSites = useCallback(async (force = false) => {
+    // Ne pas recharger si les données sont déjà présentes et que ce n'est pas un rechargement forcé
+    if (!force && isInitialized && sites.length > 0) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/sites', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch sites');
+      }
+      
+      const data = await response.json();
+      setSites(data);
+      setIsInitialized(true);
+    } catch (err) {
+      setError('Erreur lors du chargement des sites');
+      console.error('Error fetching sites:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sites.length, isInitialized]);
 
   useEffect(() => {
-    const fetchSites = async () => {
-      try {
-        const response = await fetch('/api/sites', {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch sites');
-        }
-        
-        const data = await response.json();
-        setSites(data);
-      } catch (err) {
-        setError('Erreur lors du chargement des sites');
-        console.error('Error fetching sites:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchSites();
-  }, []);
+  }, [fetchSites]);
+
+  const handleRefresh = () => {
+    fetchSites(true); // Force le rechargement
+  };
 
   const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'default' => {
     switch (status) {
@@ -66,99 +78,114 @@ export default function SiteList() {
     }
   };
 
-  if (isLoading) {
+  const renderHeader = () => (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Typography variant="h6" component="h2">
+        Mes Sites
+      </Typography>
+      <Tooltip title="Rafraîchir la liste">
+        <IconButton 
+          onClick={handleRefresh} 
+          disabled={isLoading}
+          size="small"
+        >
+          <Refresh />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
+
+  if (isLoading && !isInitialized) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <Typography>Chargement des sites...</Typography>
+      <Box sx={{ p: 4 }}>
+        {renderHeader()}
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Typography>Chargement des sites...</Typography>
+        </Box>
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <Typography color="error">{error}</Typography>
+      <Box sx={{ p: 4 }}>
+        {renderHeader()}
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Typography color="error">{error}</Typography>
+        </Box>
       </Box>
     );
   }
 
-  if (sites.length === 0) {
+  if (!isLoading && sites.length === 0) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <Typography>Aucun site trouvé</Typography>
+      <Box sx={{ p: 4 }}>
+        {renderHeader()}
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Typography>Aucun site trouvé</Typography>
+        </Box>
       </Box>
     );
   }
 
   return (
-    <Grid container spacing={3} sx={{ p: 3 }}>
-      {sites.map((site) => (
-        <Grid item xs={12} sm={6} md={4} key={site._id}>
-          <Card 
-            sx={{ 
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              '&:hover': {
-                transform: 'translateY(-4px)',
-                boxShadow: 4
-              }
-            }}
-          >
-            <CardContent sx={{ flexGrow: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Store sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6" component="h2" sx={{ flexGrow: 1 }}>
+    <Box sx={{ p: 4 }}>
+      {renderHeader()}
+      <Grid container spacing={3}>
+        {sites.map((site) => (
+          <Grid item xs={12} sm={6} md={4} key={site._id}>
+            <Card 
+              sx={{ 
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                '&:hover': {
+                  boxShadow: 6,
+                  cursor: 'pointer'
+                }
+              }}
+            >
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Store color="primary" />
+                  <Chip 
+                    label={site.status} 
+                    size="small"
+                    color={getStatusColor(site.status)}
+                  />
+                </Box>
+                
+                <Typography variant="h6" component="h3" gutterBottom>
                   {site.name}
                 </Typography>
-                <Chip
-                  size="small"
-                  label={site.status}
-                  color={getStatusColor(site.status)}
-                />
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Language sx={{ mr: 1, color: 'text.secondary', fontSize: '1.2rem' }} />
-                <Typography variant="body2" color="text.secondary">
-                  {site.domain}
-                </Typography>
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Timeline sx={{ mr: 1, color: 'text.secondary', fontSize: '1.2rem' }} />
-                <Typography variant="body2" color="text.secondary">
-                  {site.stats.orderCount} commandes
-                </Typography>
-              </Box>
-
-              <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                <Button
-                  variant="contained"
-                  size="small"
-                  href={`https://${site.domain}/wp-admin`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={{ flexGrow: 1 }}
-                >
-                  Admin
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  href={`https://${site.domain}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={{ flexGrow: 1 }}
-                >
-                  Voir le site
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      ))}
-    </Grid>
+                
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Language sx={{ mr: 1, fontSize: 'small' }} />
+                  <Typography variant="body2" color="text.secondary">
+                    {site.domain}
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Timeline sx={{ mr: 1, fontSize: 'small' }} />
+                  <Typography variant="body2" color="text.secondary">
+                    {new Date(site.createdAt).toLocaleDateString()}
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                    Commandes: {site.stats.orderCount}
+                  </Typography>
+                  <Typography variant="body2">
+                    Revenus: {site.stats.revenue}€
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
   );
 }

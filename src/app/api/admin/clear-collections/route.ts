@@ -1,31 +1,66 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { connectToDatabase } from '@/lib/mongodb';
+import { getMongoDb } from '@/lib/mongodb';
+import { ApiResponse } from '@/types';
 
 export async function POST() {
   try {
     // Vérifier l'authentification
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    if (!session?.user?.roles?.includes('admin')) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Non autorisé - Accès administrateur requis'
+          }
+        } as ApiResponse<never>,
+        { status: 401 }
+      );
     }
 
     // Connexion à la base de données
-    const { db } = await connectToDatabase();
+    const db = await getMongoDb();
 
     // Vider les collections
     await db.collection('sites').deleteMany({});
     await db.collection('billing').deleteMany({});
+    await db.collection('notifications').deleteMany({});
+    await db.collection('orders').deleteMany({});
 
     return NextResponse.json({ 
-      message: 'Collections vidées avec succès',
-      collections: ['sites', 'billing']
-    });
+      success: true,
+      data: {
+        message: 'Collections vidées avec succès',
+        collections: ['sites', 'billing', 'notifications', 'orders']
+      },
+      metadata: {
+        timestamp: new Date()
+      }
+    } as ApiResponse<{
+      message: string;
+      collections: string[];
+    }>);
   } catch (error) {
-    console.error('Erreur lors du nettoyage des collections:', error);
+    console.error('Erreur lors du nettoyage des collections:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
     return NextResponse.json(
-      { error: 'Erreur lors du nettoyage des collections' },
+      {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Erreur lors du nettoyage des collections',
+          details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
+        },
+        metadata: {
+          timestamp: new Date()
+        }
+      } as ApiResponse<never>,
       { status: 500 }
     );
   }

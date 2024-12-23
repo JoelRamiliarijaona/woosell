@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import crypto from 'crypto';
-import { connectToDatabase } from '@/lib/mongodb';
-import { WooCommerceWebhookPayload } from '@/types/woocommerce';
-import { Types } from 'mongoose';
+import { getMongoDb } from '@/lib/mongodb';
+import { WooCommerceWebhookPayload, WooCommerceOrder } from '@/types/woocommerce';
+import { ObjectId } from 'mongodb';
+import { ApiResponse } from '@/types';
 
 const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
 
@@ -20,37 +21,43 @@ export async function POST(request: NextRequest) {
   try {
     // Vérifier la signature du webhook
     const payload = await request.text();
-    const signature = headers().get('x-wc-webhook-signature');
+    const headersList = await headers();
+    const signature = headersList.get('x-wc-webhook-signature');
     
     if (!signature || !verifyWooCommerceWebhook(payload, signature)) {
       console.error('Signature webhook invalide');
-      return NextResponse.json({ error: 'Signature invalide' }, { status: 401 });
+      return NextResponse.json(
+        { 
+          success: false,
+          error: {
+            code: 'INVALID_SIGNATURE',
+            message: 'Signature invalide'
+          }
+        } as ApiResponse<never>,
+        { status: 401 }
+      );
     }
 
     // Parser le payload
     const webhookData = JSON.parse(payload) as WooCommerceWebhookPayload;
     console.log('Webhook reçu:', webhookData);
 
-    // Connexion à la base de données
-    const { db } = await connectToDatabase();
-    if (!db) {
-      throw new Error('La connexion à la base de données a échoué');
-    }
+    const db = await getMongoDb();
 
     // Traiter l'événement selon son type
-    if (webhookData.eventType === 'order.completed') {
-      const { order } = webhookData;
+    if (webhookData.eventType === 'created' && webhookData.order.status === 'completed') {
+      const order = webhookData.order;
 
       // Mettre à jour les statistiques du site
+      const siteId = new ObjectId(); // TODO: Récupérer le siteId depuis les métadonnées de la commande
       await db.collection('sites').updateOne(
-        { _id: new Types.ObjectId(order.siteId) },
+        { _id: siteId },
         {
           $inc: {
-            orderCount: 1,
             totalRevenue: parseFloat(order.total)
           },
           $set: {
-            lastOrderDate: new Date(),
+            lastSync: new Date(),
             updatedAt: new Date()
           }
         }
@@ -58,26 +65,53 @@ export async function POST(request: NextRequest) {
 
       // Enregistrer la commande dans notre base de données
       await db.collection('orders').insertOne({
-        orderId: order.id,
-        siteId: new Types.ObjectId(order.siteId),
+        wooCommerceOrderId: order.id.toString(),
+        siteId: siteId,
+        customerId: order.customer_id.toString(),
         amount: parseFloat(order.total),
+        currency: order.currency,
         status: order.status,
-        customerEmail: order.billing?.email || order.customer_email,
-        customerName: order.billing ? `${order.billing.first_name} ${order.billing.last_name}` : '',
-        items: order.line_items,
+        items: order.line_items.map(item => ({
+          productId: item.product_id.toString(),
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          sku: item.sku
+        })),
+        billingPeriod: {
+          start: new Date(order.date_created),
+          end: new Date(order.date_created) // TODO: Calculer la fin de période pour les abonnements
+        },
+        metadata: {
+          billing: order.billing,
+          shipping: order.shipping,
+          payment_method: order.payment_method
+        },
         createdAt: new Date(order.date_created),
         updatedAt: new Date()
       });
-
-      // TODO: Envoyer une notification par email
-      // await sendOrderNotification(order);
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      metadata: {
+        timestamp: new Date()
+      }
+    } as ApiResponse<void>);
   } catch (error) {
     console.error('Erreur lors du traitement du webhook:', error);
     return NextResponse.json(
-      { error: 'Erreur lors du traitement du webhook' },
+      { 
+        success: false,
+        error: {
+          code: 'WEBHOOK_ERROR',
+          message: 'Erreur lors du traitement du webhook',
+          details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
+        },
+        metadata: {
+          timestamp: new Date()
+        }
+      } as ApiResponse<never>,
       { status: 500 }
     );
   }

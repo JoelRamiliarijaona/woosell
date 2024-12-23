@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useSession } from 'next-auth/react';
 import {
   Box,
   Button,
@@ -57,25 +58,38 @@ interface CreateSiteFormProps {
 }
 
 export default function CreateSiteForm({ open, onClose, onSiteCreated }: CreateSiteFormProps) {
+  const { data: session } = useSession();
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const { register, handleSubmit, formState: { errors }, reset } = useForm<CreateSiteFormData>();
 
   const onSubmit = async (data: CreateSiteFormData) => {
-    setIsLoading(true);
-    setError(null);
-
     try {
-      const response = await axios.post<{ site: SiteResponse }>('/api/sites', data);
-      onSiteCreated(response.data.site);
-      reset();
-      onClose();
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        setError(error.response?.data?.message || 'Une erreur est survenue');
+      setIsLoading(true);
+      setError(null);
+
+      if (!session?.user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      const response = await axios.post('/api/sites', {
+        ...data,
+        userId: session.user.id
+      }, {
+        timeout: 20 * 60 * 1000 // 20 minutes timeout
+      });
+
+      if (response.data) {
+        onSiteCreated(response.data);
+        reset();
+        onClose();
+      }
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.code === 'ECONNABORTED') {
+        setError('La création du site prend plus de temps que prévu. Veuillez vérifier l\'état du site dans quelques minutes.');
       } else {
-        setError('Une erreur inattendue est survenue');
+        setError(err instanceof Error ? err.message : 'Failed to create site');
       }
     } finally {
       setIsLoading(false);

@@ -32,13 +32,8 @@ export default function Notifications() {
       }
     };
 
-    // Fetch initial notifications
+    // Fetch notifications only once at component mount
     fetchNotifications();
-
-    // Set up polling every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000);
-
-    return () => clearInterval(interval);
   }, []);
 
   const handleClose = (event?: React.SyntheticEvent | Event, reason?: string) => {

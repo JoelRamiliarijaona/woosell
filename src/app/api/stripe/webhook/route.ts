@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import Stripe from 'stripe';
-import { connectToDatabase } from '@/lib/mongodb';
-import { Types } from 'mongoose';
+import { getMongoDb } from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2023-10-16',
@@ -13,54 +13,61 @@ const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
-    const sig = headers().get('stripe-signature');
+    const headersList = await headers();
+    const sig = headersList.get('stripe-signature');
 
     if (!sig || !endpointSecret) {
-      return NextResponse.json({ error: 'Signature manquante' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Missing signature or endpoint secret' },
+        { status: 400 }
+      );
     }
 
-    // Vérifier la signature de l'événement
     let event: Stripe.Event;
+
     try {
       event = stripe.webhooks.constructEvent(body, sig, endpointSecret);
     } catch (err) {
-      console.error('Erreur de signature webhook:', err);
-      return NextResponse.json({ error: 'Signature invalide' }, { status: 400 });
+      console.error('Webhook signature verification failed:', err);
+      return NextResponse.json(
+        { error: 'Webhook signature verification failed' },
+        { status: 400 }
+      );
     }
 
-    // Gérer l'événement
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const siteId = session.metadata?.siteId;
+    const db = await getMongoDb();
 
-      // Connexion à la base de données
-      const { db } = await connectToDatabase();
-      if (!db) {
-        throw new Error('La connexion à la base de données a échoué');
-      }
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const siteId = session.metadata?.siteId;
 
-      // Mettre à jour le site avec les informations de paiement
-      await db.collection('sites').updateOne(
-        { _id: new Types.ObjectId(siteId) },
-        {
-          $set: {
-            'billing.status': 'active',
-            'billing.stripeCustomerId': session.customer,
-            'billing.subscriptionId': session.subscription,
-            'billing.updatedAt': new Date()
-          }
+        if (!siteId) {
+          throw new Error('No siteId found in session metadata');
         }
-      );
 
-      // Envoyer un email de confirmation
-      // TODO: Implémenter l'envoi d'email
+        await db.collection('sites').updateOne(
+          { _id: new ObjectId(siteId) },
+          {
+            $set: {
+              'billing.status': 'active',
+              'billing.stripeCustomerId': session.customer,
+              'billing.subscriptionId': session.subscription,
+              'billing.updatedAt': new Date()
+            }
+          }
+        );
+
+        break;
+      }
+      // Ajoutez d'autres cas pour gérer différents types d'événements Stripe
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Erreur webhook Stripe:', error);
+    console.error('Webhook error:', error);
     return NextResponse.json(
-      { error: 'Erreur lors du traitement du webhook' },
+      { error: 'Webhook handler failed' },
       { status: 500 }
     );
   }

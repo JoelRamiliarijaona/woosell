@@ -1,18 +1,56 @@
 import { MongoClient, Db } from 'mongodb';
+import mongoose from 'mongoose';
 
 if (!process.env.MONGODB_URI) {
   throw new Error('Please add your Mongo URI to .env.local');
 }
 
 const uri = process.env.MONGODB_URI;
-const options = {};
+console.log('Connecting to MongoDB at:', uri.replace(/\/\/[^:]+:[^@]+@/, '//<credentials>@'));
+
+const options = {
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+};
 
 let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
 
+// Configure mongoose
+mongoose.set('strictQuery', true);
+
+// Fonction pour se connecter à MongoDB avec mongoose
+async function connectWithMongoose() {
+  try {
+    await mongoose.connect(uri, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    console.log('Mongoose connected successfully');
+    
+    // Écouter les événements de connexion
+    mongoose.connection.on('error', (err) => {
+      console.error('Mongoose connection error:', err);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.warn('Mongoose disconnected, attempting to reconnect...');
+      connectWithMongoose();
+    });
+
+  } catch (err) {
+    console.error('Error connecting to MongoDB with Mongoose:', err);
+    // Réessayer après 5 secondes
+    setTimeout(connectWithMongoose, 5000);
+  }
+}
+
+// Démarrer la connexion
+connectWithMongoose();
+
 if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable so that the value
-  // is preserved across module reloads caused by HMR (Hot Module Replacement).
   let globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>;
   };
@@ -23,16 +61,21 @@ if (process.env.NODE_ENV === 'development') {
   }
   clientPromise = globalWithMongo._mongoClientPromise;
 } else {
-  // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options);
   clientPromise = client.connect();
 }
 
 export async function getMongoDb(): Promise<Db> {
-  const client = await clientPromise;
-  return client.db();
+  try {
+    const client = await clientPromise;
+    const db = client.db();
+    console.log('Successfully connected to MongoDB database');
+    return db;
+  } catch (error) {
+    console.error('Error connecting to MongoDB:', error);
+    throw error;
+  }
 }
 
-// Export a module-scoped MongoClient promise. By doing this in a
-// separate module, the client can be shared across functions.
+// Export a module-scoped MongoClient promise
 export default clientPromise;

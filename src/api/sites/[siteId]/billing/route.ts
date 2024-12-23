@@ -1,40 +1,80 @@
-import { NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/mongodb';
+import { NextRequest, NextResponse } from 'next/server';
+import { getMongoDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { ApiResponse } from '@/types';
+import { SiteModel, type SiteType } from '@/lib/models/website';
 
 // Constantes de facturation
 const BASE_PRICE = 1; // Prix de base en euros
 const PRICE_PER_ORDER = 0.5; // Prix par commande en euros
 
+interface BillingStats {
+  currentMonth: {
+    orderCount: number;
+    amount: number;
+    startDate: Date;
+    endDate: Date;
+  };
+  previousMonth: {
+    orderCount: number;
+    amount: number;
+    startDate: Date;
+    endDate: Date;
+  };
+}
+
 // GET /api/sites/[siteId]/billing - Obtenir les statistiques de facturation
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { siteId: string } }
 ) {
   try {
     // Vérifier l'authentification
     const session = await getServerSession(authOptions);
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Non autorisé'
+          }
+        } as ApiResponse<never>,
         { status: 401 }
       );
     }
 
-    const db = await connectToDatabase();
-    const siteId = params.siteId;
+    // Vérifier que le siteId est valide
+    if (!ObjectId.isValid(params.siteId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'ID de site invalide'
+          }
+        } as ApiResponse<never>,
+        { status: 400 }
+      );
+    }
 
     // Vérifier que le site existe et appartient à l'utilisateur
-    const site = await db.collection('sites').findOne({
-      _id: new ObjectId(siteId),
+    const site = await SiteModel.findOne({
+      _id: new ObjectId(params.siteId),
       userId: session.user.id
-    });
+    }).lean() as SiteType | null;
 
     if (!site) {
       return NextResponse.json(
-        { error: 'Site not found' },
+        {
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Site non trouvé'
+          }
+        } as ApiResponse<never>,
         { status: 404 }
       );
     }
@@ -42,15 +82,17 @@ export async function GET(
     // Obtenir le premier jour du mois en cours
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     // Obtenir le premier jour du mois précédent
     const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+    const db = await getMongoDb();
 
     // Obtenir les commandes du mois en cours
     const currentMonthOrders = await db.collection('orders').countDocuments({
-      siteId: site.domain,
+      siteId: site.storeId,
       createdAt: {
         $gte: currentMonthStart,
         $lte: currentMonthEnd
@@ -60,7 +102,7 @@ export async function GET(
 
     // Obtenir les commandes du mois précédent
     const previousMonthOrders = await db.collection('orders').countDocuments({
-      siteId: site.domain,
+      siteId: site.storeId,
       createdAt: {
         $gte: previousMonthStart,
         $lte: previousMonthEnd
@@ -70,30 +112,46 @@ export async function GET(
 
     // Calculer les montants
     const calculateAmount = (orderCount: number) => {
-      return BASE_PRICE + (orderCount * PRICE_PER_ORDER);
+      return Number((BASE_PRICE + (orderCount * PRICE_PER_ORDER)).toFixed(2));
     };
 
-    const currentMonthAmount = calculateAmount(currentMonthOrders);
-    const previousMonthAmount = calculateAmount(previousMonthOrders);
-
-    return NextResponse.json({
+    const billingStats: BillingStats = {
       currentMonth: {
         orderCount: currentMonthOrders,
-        amount: currentMonthAmount,
+        amount: calculateAmount(currentMonthOrders),
         startDate: currentMonthStart,
         endDate: currentMonthEnd
       },
       previousMonth: {
         orderCount: previousMonthOrders,
-        amount: previousMonthAmount,
+        amount: calculateAmount(previousMonthOrders),
         startDate: previousMonthStart,
         endDate: previousMonthEnd
       }
-    });
+    };
+
+    return NextResponse.json({
+      success: true,
+      data: billingStats,
+      metadata: {
+        timestamp: new Date()
+      }
+    } as ApiResponse<BillingStats>);
+
   } catch (error) {
-    console.error('Error getting billing stats:', error);
+    console.error('Erreur lors de la récupération des statistiques de facturation:', error);
     return NextResponse.json(
-      { error: 'Internal Server Error' },
+      {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error instanceof Error ? error.message : 'Erreur interne du serveur',
+          details: error instanceof Error ? error.stack : undefined
+        },
+        metadata: {
+          timestamp: new Date()
+        }
+      } as ApiResponse<never>,
       { status: 500 }
     );
   }

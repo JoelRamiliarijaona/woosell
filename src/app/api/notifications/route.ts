@@ -1,105 +1,208 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { connectToDatabase } from '@/lib/mongodb';
+import { getMongoDb } from '@/lib/mongodb';
+import { ApiResponse, Notification } from '@/types';
+import { ObjectId } from 'mongodb';
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    if (!session?.user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Non autorisé'
+          }
+        } as ApiResponse<never>,
+        { status: 401 }
+      );
     }
 
-    const { db } = await connectToDatabase();
-    if (!db) {
-      throw new Error('La connexion à la base de données a échoué');
-    }
-
-    const notifications = await db.collection('notifications')
+    const db = await getMongoDb();
+    const notifications = await db.collection<Notification>('notifications')
       .find({ userId: session.user.id })
-      .sort({ createdAt: -1 })
+      .sort({ timestamp: -1 })
       .toArray();
 
-    return NextResponse.json(notifications);
+    return NextResponse.json({
+      success: true,
+      data: notifications,
+      metadata: {
+        timestamp: new Date()
+      }
+    } as ApiResponse<Notification[]>);
   } catch (error) {
-    console.error('Erreur lors de la récupération des notifications:', error);
+    console.error('Erreur lors de la récupération des notifications:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des notifications' },
+      {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Erreur lors de la récupération des notifications',
+          details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
+        },
+        metadata: {
+          timestamp: new Date()
+        }
+      } as ApiResponse<never>,
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextResponse) {
+export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    if (!session?.user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Non autorisé'
+          }
+        } as ApiResponse<never>,
+        { status: 401 }
+      );
     }
 
-    const body = await request.json();
-    const { db } = await connectToDatabase();
-    if (!db) {
-      throw new Error('La connexion à la base de données a échoué');
-    }
-
-    const notification = {
-      ...body,
+    const data = await request.json();
+    const db = await getMongoDb();
+    
+    const notificationId = new ObjectId();
+    const notification: Notification = {
+      id: notificationId.toHexString(),
       userId: session.user.id,
-      createdAt: new Date(),
-      read: false
+      message: data.message,
+      type: data.type || 'info',
+      read: false,
+      timestamp: new Date(),
+      metadata: data.metadata
     };
 
-    const result = await db.collection('notifications').insertOne(notification);
-    return NextResponse.json({
-      message: 'Notification créée avec succès',
-      notification: {
-        ...notification,
-        _id: result.insertedId
-      }
+    await db.collection<Notification>('notifications').insertOne({
+      _id: notificationId,
+      ...notification
     });
+
+    return NextResponse.json({
+      success: true,
+      data: notification,
+      metadata: {
+        timestamp: new Date()
+      }
+    } as ApiResponse<Notification>);
   } catch (error) {
-    console.error('Erreur lors de la création de la notification:', error);
+    console.error('Erreur lors de la création de la notification:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
     return NextResponse.json(
-      { error: 'Erreur lors de la création de la notification' },
+      {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Erreur lors de la création de la notification',
+          details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
+        },
+        metadata: {
+          timestamp: new Date()
+        }
+      } as ApiResponse<never>,
       { status: 500 }
     );
   }
 }
 
-export async function PUT(request: NextResponse) {
+export async function PUT(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    if (!session?.user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Non autorisé'
+          }
+        } as ApiResponse<never>,
+        { status: 401 }
+      );
     }
 
-    const { db } = await connectToDatabase();
-    if (!db) {
-      throw new Error('La connexion à la base de données a échoué');
+    const data = await request.json();
+    const db = await getMongoDb();
+    
+    if (!data.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'BAD_REQUEST',
+            message: 'ID de notification manquant'
+          }
+        } as ApiResponse<never>,
+        { status: 400 }
+      );
     }
 
-    const body = await request.json();
-    const result = await db.collection('notifications').updateOne(
+    const result = await db.collection<Notification>('notifications').updateOne(
       { 
-        _id: body.notificationId,
+        _id: new ObjectId(data.id),
         userId: session.user.id 
       },
-      { $set: { read: true } }
+      { $set: { read: data.read } }
     );
 
     if (result.matchedCount === 0) {
       return NextResponse.json(
-        { error: 'Notification non trouvée' },
+        {
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Notification non trouvée'
+          }
+        } as ApiResponse<never>,
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ message: 'Notification mise à jour avec succès' });
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: data.id,
+        read: data.read
+      },
+      metadata: {
+        timestamp: new Date()
+      }
+    } as ApiResponse<{ id: string; read: boolean }>);
   } catch (error) {
-    console.error('Erreur lors de la mise à jour de la notification:', error);
+    console.error('Erreur lors de la mise à jour de la notification:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
     return NextResponse.json(
-      { error: 'Erreur lors de la mise à jour de la notification' },
+      {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Erreur lors de la mise à jour de la notification',
+          details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
+        },
+        metadata: {
+          timestamp: new Date()
+        }
+      } as ApiResponse<never>,
       { status: 500 }
     );
   }
