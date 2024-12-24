@@ -1,7 +1,7 @@
 import { SiteModel } from './models/website';
 import mongoose from 'mongoose';
 
-const API_TIMEOUT = 300000; // 5 minutes
+const API_TIMEOUT = 1200000; // 20 minutes
 
 interface WooCommerceApiResponse {
   storeId: string;
@@ -55,13 +55,8 @@ export class WooCommerceClient {
   }
 
   async createWooCommerceSite(siteData: CreateSiteData): Promise<CreateSiteResponse> {
-    const timeoutId = setTimeout(() => {
-      throw new Error('API request timeout');
-    }, API_TIMEOUT);
-
     try {
       const apiUrl = 'http://51.159.99.74:7999/v3/create_woo_instance';
-      console.log('Creating WooCommerce site at:', apiUrl);
 
       const requestBody = {
         domain: siteData.domain,
@@ -69,13 +64,15 @@ export class WooCommerceClient {
         password: siteData.password,
         thematic: "site e-commerce",
         target_audience: "shop",
-        key_seo_term: "Shop"
+        key_seo_term: "Shop",
+        type: "Shop"
       };
 
-      console.log('Request body:', { ...requestBody, password: '***' });
-
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        console.error('API request timeout after', API_TIMEOUT / 1000, 'seconds');
+      }, API_TIMEOUT);
 
       try {
         const response = await fetch(apiUrl, {
@@ -179,7 +176,6 @@ export class WooCommerceClient {
       }
 
     } catch (error) {
-      clearTimeout(timeoutId);
       console.error('Error in createWooCommerceSite:', error);
       return {
         success: false,

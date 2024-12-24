@@ -9,7 +9,7 @@ import { ApiResponse } from '@/types';
 const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
 
 // Fonction pour vérifier la signature du webhook
-function verifyWooCommerceWebhook(payload: string, signature: string): boolean {
+export function verifyWooCommerceWebhook(payload: string, signature: string): boolean {
   if (!WEBHOOK_SECRET) return false;
   
   const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);

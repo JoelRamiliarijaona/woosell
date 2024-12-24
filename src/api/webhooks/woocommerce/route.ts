@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getMongoDb } from '@/lib/mongodb';
 import logger, { logWebhookError } from '@/lib/logger';
-import { verifyWooCommerceWebhook } from '@/lib/woocommerce';
+import { verifyWooCommerceWebhook } from '@/app/api/woocommerce/webhook/route';
 import { Site, Order, Notification, ApiResponse } from '@/types';
 import { ObjectId, OptionalId } from 'mongodb';
+
 
 interface WooCommerceWebhookOrder {
   id: string;
@@ -31,12 +32,11 @@ export async function POST(request: Request) {
   let payload: WebhookPayload | undefined;
   
   try {
-    payload = await request.json() as WebhookPayload;
-    const db = await getMongoDb();
-
     // Vérifier la signature du webhook
-    const isValid = await verifyWooCommerceWebhook(request);
-    if (!isValid) {
+    const signature = request.headers.get('x-wc-webhook-signature');
+    const payloadText = await request.text();
+    
+    if (!signature || !verifyWooCommerceWebhook(payloadText, signature)) {
       return NextResponse.json(
         {
           success: false,
@@ -48,6 +48,9 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
+
+    payload = JSON.parse(payloadText) as WebhookPayload;
+    const db = await getMongoDb();
 
     const { event, order } = payload;
 

@@ -1,8 +1,8 @@
 import KeycloakProvider from 'next-auth/providers/keycloak';
-import NextAuth from 'next-auth';
-import { NextResponse } from 'next/server';
+import NextAuth, { Account, NextAuthOptions } from 'next-auth';
+import { JWT } from 'next-auth/jwt';
 
-const authOptions = {
+const authOptions: NextAuthOptions = {
   providers: [
     KeycloakProvider({
       clientId: process.env.KEYCLOAK_ID || '',
@@ -10,14 +10,18 @@ const authOptions = {
       issuer: process.env.KEYCLOAK_ISSUER,
     })
   ],
+  session: {
+    maxAge: 60 * 60, // 1 heure en secondes
+    updateAge: 60 * 60, // Met à jour la session seulement après 1 heure
+  },
   callbacks: {
-    async jwt({ token, account }) {
+    async jwt({ token, account }: { token: JWT; account: Account | null }) {
       if (account) {
         token.accessToken = account.access_token;
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: JWT }) {
       if (session.user) {
         session.user.accessToken = token.accessToken as string;
       }
@@ -37,7 +41,7 @@ export async function GET(request: Request) {
   
   // Si c'est une requête de session, ajouter des headers de cache
   if (request.url.includes('/api/auth/session')) {
-    response.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=60');
+    (response as Response).headers.set('Cache-Control', 'private, max-age=3600, stale-while-revalidate=60'); // Cache pour 1 heure
   }
   
   return response;
