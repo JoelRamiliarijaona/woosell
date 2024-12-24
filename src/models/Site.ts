@@ -99,8 +99,7 @@ siteSchema.index({ orderCount: -1 });
 
 // Méthodes virtuelles
 siteSchema.virtual('monthlyOrderCount').get(function() {
-  const now = new Date();
-  return this.orderCount - (this.previousMonthOrders || 0);
+  return this.orderCount
 });
 
 export const Site: Model<ISite> = models.Site || model<ISite>('Site', siteSchema);

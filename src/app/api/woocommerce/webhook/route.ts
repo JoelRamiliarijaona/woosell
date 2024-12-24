@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import crypto from 'crypto';
 import { getMongoDb } from '@/lib/mongodb';
-import { WooCommerceWebhookPayload, WooCommerceOrder } from '@/types/woocommerce';
+import { WooCommerceWebhookPayload } from '@/types/woocommerce';
 import { ObjectId } from 'mongodb';
 import { ApiResponse } from '@/types';
 

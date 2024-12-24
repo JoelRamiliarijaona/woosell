@@ -18,20 +18,6 @@ interface WooCommerceCredentials {
   siteUrl: string;
 }
 
-interface WooCommerceCreateResponse {
-  success: boolean;
-  data?: {
-    consumerKey: string;
-    consumerSecret: string;
-    storeId: string;
-  };
-  error?: {
-    message: string;
-    code?: string;
-    details?: unknown;
-  };
-}
-
 interface CreateSiteResponse {
   message: string;
   siteId: ObjectId;

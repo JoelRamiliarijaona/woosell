@@ -49,7 +49,6 @@ export async function GET(request: Request) {
       .toArray();
 
     // Calculer le total des revenus et des commandes
-    const totalRevenue = sites.reduce((acc, site) => acc + site.totalRevenue, 0);
     const totalOrders = billing?.usage?.orderCount || 0;
 
     // Calculer les frais

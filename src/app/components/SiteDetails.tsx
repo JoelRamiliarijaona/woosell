@@ -12,16 +12,13 @@ import {
   DialogContent,
   DialogActions,
   Card,
-  CardContent,
-  Tooltip
+  CardContent
 } from '@mui/material';
 import {
   Close as CloseIcon,
   ShoppingCart,
-  Dashboard,
   Store,
   Euro,
-  Receipt,
   Delete as DeleteIcon,
   Language,
   AccessTime,

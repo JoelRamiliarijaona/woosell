@@ -17,11 +17,6 @@ interface KeycloakProfile {
   };
 }
 
-interface ExtendedUser extends User {
-  id: string;
-  roles?: string[];
-}
-
 interface ExtendedJWT extends JWT {
   sub: string;
   roles?: string[];
@@ -29,11 +24,18 @@ interface ExtendedJWT extends JWT {
   refreshToken?: string;
 }
 
-interface ExtendedSession {
-  user: ExtendedUser;
-  roles: string[];
-  accessToken: string;
-  expires: string;
+interface TokenPayload {
+  sub: string;
+  email: string;
+  email_verified: boolean;
+  name: string;
+  preferred_username: string;
+  given_name?: string;
+  family_name?: string;
+  realm_access?: {
+    roles: string[];
+  };
+  [key: string]: unknown;
 }
 
 interface UserSession {
@@ -71,7 +73,7 @@ export const authOptions: NextAuthOptions = {
     updateAge: 5 * 60     // 5 minutes
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ profile }) {
       try {
         const keycloakProfile = profile as KeycloakProfile;
         if (!keycloakProfile?.sub) {
@@ -201,7 +203,7 @@ export async function verifyToken(request: Request): Promise<KeycloakProfile | n
     });
 
     // Cast to unknown first, then validate fields before casting to KeycloakProfile
-    const profile = payload as unknown as { [key: string]: any };
+    const profile = payload as unknown as TokenPayload;
     
     if (!profile.sub || typeof profile.sub !== 'string' ||
         !profile.email || typeof profile.email !== 'string' ||

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoDb } from '@/lib/mongodb';
 import { authOptions, isAdmin } from '@/lib/auth';
-import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import mongoose from 'mongoose';
 import { ApiResponse, Site as SiteType } from '@/types';
 import { WooCommerceClient } from '@/lib/woocommerce';
 import { SiteModel } from '@/lib/models/website';
 
-export const maxDuration = 1200; // 20 minutes en secondes
+export const maxDuration = 1500;
 
 // Configuration des headers CORS
 const corsHeaders = {
@@ -22,7 +21,7 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {

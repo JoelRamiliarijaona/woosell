@@ -3,6 +3,13 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getMongoDb } from '@/lib/mongodb';
 import { ApiResponse } from '@/types';
+interface BillingData {
+  id?: string;
+  usage?: {
+    orderCount: number;
+  };
+  // Ajoutez d'autres champs selon votre structure
+}
 
 export async function GET() {
   try {
@@ -29,7 +36,7 @@ export async function GET() {
       metadata: {
         timestamp: new Date()
       }
-    } as ApiResponse<any[]>);
+    } as ApiResponse<BillingData[]>);
   } catch (error) {
     console.error('Erreur lors de la récupération des données de facturation:', {
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -88,7 +95,7 @@ export async function POST(request: Request) {
       metadata: {
         timestamp: new Date()
       }
-    } as ApiResponse<any>);
+    } as ApiResponse<BillingData>);
   } catch (error) {
     console.error('Erreur lors de la création des données de facturation:', {
       message: error instanceof Error ? error.message : 'Unknown error',

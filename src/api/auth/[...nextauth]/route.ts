@@ -1,5 +1,5 @@
 import KeycloakProvider from 'next-auth/providers/keycloak';
-import NextAuth, { Account, NextAuthOptions } from 'next-auth';
+import NextAuth, { Account, NextAuthOptions, Session } from 'next-auth';
 import { JWT } from 'next-auth/jwt';
 
 const authOptions: NextAuthOptions = {
@@ -21,7 +21,7 @@ const authOptions: NextAuthOptions = {
       }
       return token;
     },
-    async session({ session, token }: { session: any; token: JWT }) {
+    async session({ session, token }: { session: Session; token: JWT }) {
       if (session.user) {
         session.user.accessToken = token.accessToken as string;
       }

@@ -66,9 +66,6 @@ export default function Home() {
     initializePage();
   }, [session, status]);
 
-  const handleCreateSite = () => {
-    setShowCreateForm(true);
-  };
 
   if (status === 'loading' || loading) {
     return (

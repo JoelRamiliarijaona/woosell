@@ -1,14 +1,6 @@
 import { SiteModel } from './models/website';
-import mongoose from 'mongoose';
 
 const API_TIMEOUT = 1200000; // 20 minutes
-
-interface WooCommerceApiResponse {
-  storeId: string;
-  consumerKey: string;
-  consumerSecret: string;
-  [key: string]: any;
-}
 
 interface CreateSiteResponse {
   success: boolean;
@@ -40,9 +32,9 @@ interface CreateSiteData {
 }
 
 export class WooCommerceClient {
-  private consumerKey: string;
-  private consumerSecret: string;
-  private siteUrl: string;
+  consumerKey: string;
+  consumerSecret: string;
+  siteUrl: string;
 
   constructor(
     consumerKey: string,
