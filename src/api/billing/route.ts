@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getMongoDb } from '@/lib/mongodb';
 import { verifyToken } from '@/lib/auth';
-import { Site, Billing, ApiResponse } from '@/types';
+import { Billing, ApiResponse } from '@/types';
 
 interface BillingResponse {
   totalOrders: number;
