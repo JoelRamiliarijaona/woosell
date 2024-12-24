@@ -1,11 +1,12 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
+import { Suspense } from 'react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Box, Typography, CircularProgress, Button } from '@mui/material';
+import { Box, Typography, CircularProgress, Button, Container } from '@mui/material';
 
-export default function SignInPage() {
+function SignInContent() {
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
@@ -13,19 +14,10 @@ export default function SignInPage() {
   useEffect(() => {
     const initiateSignIn = async () => {
       try {
-        console.log('Initiating Keycloak sign-in...');
-        console.log('Callback URL:', callbackUrl);
-        
-        const result = await signIn('keycloak', {
+        await signIn('keycloak', {
           callbackUrl,
           redirect: true,
         });
-        
-        console.log('Sign-in result:', result);
-        
-        if (result?.error) {
-          setError(result.error);
-        }
       } catch (err) {
         console.error('Sign-in error:', err);
         setError(err instanceof Error ? err.message : 'Une erreur est survenue lors de la connexion');
@@ -37,30 +29,46 @@ export default function SignInPage() {
 
   if (error) {
     return (
-      <Box className="flex flex-col items-center justify-center min-h-screen p-4">
-        <Typography variant="h5" color="error" gutterBottom>
-          Erreur de connexion
-        </Typography>
-        <Typography color="text.secondary" paragraph>
-          {error}
-        </Typography>
-        <Button
-          variant="contained"
-          onClick={() => window.location.reload()}
-          sx={{ mt: 2 }}
-        >
-          Réessayer
-        </Button>
-      </Box>
+      <Container maxWidth="sm" sx={{ mt: 8 }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h5" color="error" gutterBottom>
+            Erreur de connexion
+          </Typography>
+          <Typography variant="body1" paragraph>
+            {error}
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => signIn('keycloak', { callbackUrl })}
+          >
+            Réessayer
+          </Button>
+        </Box>
+      </Container>
     );
   }
 
   return (
-    <Box className="flex flex-col items-center justify-center min-h-screen p-4">
-      <CircularProgress size={40} sx={{ mb: 2 }} />
-      <Typography>
-        Redirection vers la page de connexion...
-      </Typography>
-    </Box>
+    <Container maxWidth="sm" sx={{ mt: 8 }}>
+      <Box sx={{ textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography variant="body1" sx={{ mt: 2 }}>
+          Redirection vers la page de connexion...
+        </Typography>
+      </Box>
+    </Container>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <Container maxWidth="sm" sx={{ mt: 8, textAlign: 'center' }}>
+        <CircularProgress />
+      </Container>
+    }>
+      <SignInContent />
+    </Suspense>
   );
 }
