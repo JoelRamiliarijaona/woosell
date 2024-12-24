@@ -1,4 +1,4 @@
-import { connectToDatabase } from '../src/lib/mongodb';
+import { getMongoDb } from '../src/lib/mongodb';
 import User from '../src/models/User';
 import { model, models } from 'mongoose';
 import { ISite } from '../src/models/Site';
@@ -9,7 +9,7 @@ const Site = models.Site || model<ISite>('Site');
 async function createTestSite() {
   try {
     // Connexion à la base de données
-    const { db } = await connectToDatabase();
+    const db = await getMongoDb();
     if (!db) {
       throw new Error('Failed to connect to database');
     }
