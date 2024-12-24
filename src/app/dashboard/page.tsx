@@ -61,7 +61,11 @@ export default function DashboardPage() {
         maxWidth="md"
         fullWidth
       >
-        <CreateSiteForm onSuccess={() => setIsCreateFormOpen(false)} />
+        <CreateSiteForm 
+          open={isCreateFormOpen}
+          onClose={() => setIsCreateFormOpen(false)}
+          onSiteCreated={() => setIsCreateFormOpen(false)}
+        />
       </Dialog>
     </Container>
   );
