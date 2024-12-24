@@ -1,7 +1,8 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Box, Typography, Paper, Container, Button } from '@mui/material';
+import { Box, Typography, Paper, Container, Button, CircularProgress } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 
@@ -12,7 +13,7 @@ const ERROR_MESSAGES: { [key: string]: string } = {
   'Default': 'Une erreur inattendue s&apos;est produite'
 };
 
-export default function AuthError() {
+function ErrorContent() {
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
   const [errorDetails, setErrorDetails] = useState<string>('');
@@ -94,5 +95,17 @@ export default function AuthError() {
         </Paper>
       </Box>
     </Container>
+  );
+}
+
+export default function AuthError() {
+  return (
+    <Suspense fallback={
+      <Container maxWidth="sm" sx={{ mt: 8, textAlign: 'center' }}>
+        <CircularProgress />
+      </Container>
+    }>
+      <ErrorContent />
+    </Suspense>
   );
 }
