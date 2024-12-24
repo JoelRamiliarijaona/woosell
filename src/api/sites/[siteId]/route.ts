@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/mongodb';
+import { getMongoDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -19,7 +19,7 @@ export async function DELETE(
       );
     }
 
-    const db = await connectToDatabase();
+    const db = await getMongoDb();
     const siteId = params.siteId;
 
     // Vérifier que le site existe et appartient à l'utilisateur
