@@ -5,6 +5,20 @@ import { getMongoDb } from '@/lib/mongodb';
 import { ApiResponse } from '@/types';
 
 export async function POST() {
+  // Ne pas exécuter pendant le build
+  if (process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'preview') {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'BUILD_TIME',
+          message: 'Cette route n\'est pas disponible pendant le build'
+        }
+      } as ApiResponse<never>,
+      { status: 503 }
+    );
+  }
+
   try {
     // Vérifier l'authentification
     const session = await getServerSession(authOptions);

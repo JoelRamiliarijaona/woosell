@@ -1,12 +1,8 @@
 import { MongoClient, Db } from 'mongodb';
 import mongoose from 'mongoose';
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Please add your Mongo URI to .env.local');
-}
-
-const uri = process.env.MONGODB_URI;
-console.log('Connecting to MongoDB at:', uri.replace(/\/\/[^:]+:[^@]+@/, '//<credentials>@'));
+// Valeur par défaut pour le build
+const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/woosell';
 
 const options = {
   maxPoolSize: 10,
@@ -23,6 +19,10 @@ mongoose.set('strictQuery', true);
 // Fonction pour se connecter à MongoDB avec mongoose
 async function connectWithMongoose() {
   try {
+    if (!process.env.MONGODB_URI && process.env.NODE_ENV === 'production') {
+      throw new Error('Please add your Mongo URI to environment variables');
+    }
+    
     await mongoose.connect(uri, {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
