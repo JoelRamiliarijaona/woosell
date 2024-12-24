@@ -1,6 +1,10 @@
 import { SiteModel } from './models/website';
+import http from 'http';
 
-const API_TIMEOUT = 1200000; // 20 minutes
+// Extension du type RequestInit pour inclure l'agent
+interface ExtendedRequestInit extends RequestInit {
+  agent?: http.Agent;
+}
 
 interface CreateSiteResponse {
   success: boolean;
@@ -32,9 +36,10 @@ interface CreateSiteData {
 }
 
 export class WooCommerceClient {
-  consumerKey: string;
-  consumerSecret: string;
-  siteUrl: string;
+  private consumerKey: string;
+  private consumerSecret: string;
+  private siteUrl: string;
+  private agent: http.Agent;
 
   constructor(
     consumerKey: string,
@@ -44,12 +49,18 @@ export class WooCommerceClient {
     this.consumerKey = consumerKey;
     this.consumerSecret = consumerSecret;
     this.siteUrl = siteUrl;
+
+    // Configurer l'agent HTTP avec un timeout de 35 minutes
+    this.agent = new http.Agent({
+      keepAlive: true,
+      timeout: 35 * 60 * 1000, // 35 minutes
+    });
   }
 
   async createWooCommerceSite(siteData: CreateSiteData): Promise<CreateSiteResponse> {
-    try {
-      const apiUrl = 'http://51.159.99.74:7999/v3/create_woo_instance';
+    const apiUrl = 'http://51.159.99.74:7999/v3/create_woo_instance';
 
+    try {
       const requestBody = {
         domain: siteData.domain,
         name: siteData.name,
@@ -60,89 +71,79 @@ export class WooCommerceClient {
         type: "Shop"
       };
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        console.error('API request timeout after', API_TIMEOUT / 1000, 'seconds');
-      }, API_TIMEOUT);
+      console.log('Starting WooCommerce site creation...');
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Accept': '*/*',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+        agent: this.agent
+      } as ExtendedRequestInit);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+
+        return {
+          success: false,
+          error: {
+            code: 'API_ERROR',
+            message: `La requête a échoué avec le statut ${response.status}: ${response.statusText}`,
+            details: {
+              status: response.status,
+              response: errorText
+            }
+          }
+        };
+      }
+
+      const data = await response.json();
+      console.log('API Response:', data);
+
+      // Créer le site dans la base de données
+      const site = new SiteModel({
+        storeId: siteData.domain,
+        type: 'shop',
+        apiHost: `https://${siteData.domain}`,
+        apiKey: data.consumerKey || '',
+        apiSecret: data.consumerSecret || '',
+        name: siteData.name,
+        provider: 'woo',
+        userId: siteData.userId,
+        status: 'active',
+        createdAt: new Date(),
+        stats: {
+          orderCount: 0,
+          revenue: 0,
+          lastSync: new Date()
+        }
+      });
 
       try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Accept': '*/*',
-            'Content-Type': 'application/json',
-            'Connection': 'keep-alive',
-            'Cache-Control': 'no-cache'
-          },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-          keepalive: true
-        });
+        await site.save();
+        console.log('Site saved to database:', site);
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          console.error('API request failed:', {
-            status: response.status,
-            statusText: response.statusText
-          });
-
-          const errorText = await response.text();
-          console.error('Error response:', errorText);
-
-          return {
-            success: false,
-            error: {
-              code: 'API_ERROR',
-              message: `La requête a échoué avec le statut ${response.status}: ${response.statusText}`,
-              details: {
-                status: response.status,
-                response: errorText
-              }
-            }
-          };
-        }
-
-        const data = await response.json();
-        console.log('API Response:', data);
-
-        // Sauvegarder le site dans la base de données
-        const site = new SiteModel({
-          storeId: siteData.domain,
-          type: 'shop',
-          apiHost: `https://${siteData.domain}`,
-          apiKey: data.consumerKey || '',
-          apiSecret: data.consumerSecret || '',
-          name: siteData.name,
-          provider: 'woo',
-          userId: siteData.userId,
-          status: 'pending',
-          createdAt: new Date(),
-          stats: {
-            orderCount: 0,
-            revenue: 0,
-            lastSync: new Date()
+        return {
+          success: true,
+          data: {
+            storeId: site.storeId,
+            consumerKey: data.consumerKey || '',
+            consumerSecret: data.consumerSecret || '',
+            _id: site._id.toString(),
+            name: site.name,
+            domain: siteData.domain,
+            stats: site.stats
           }
-        });
+        };
 
-        try {
-          await site.save();
-          console.log('Site saved to database:', site);
-
-          return {
-            success: true,
-            data: {
-              storeId: site.storeId,
-              consumerKey: site.apiKey,
-              consumerSecret: site.apiSecret,
-              _id: site._id.toString(),
-              name: site.name,
-              domain: siteData.domain,
-              stats: site.stats
-            }
-          };
-        } catch (dbError) {
+      } catch (dbError: unknown) {
+        if (dbError instanceof Error) {
           console.error('Error saving site to database:', dbError);
           return {
             success: false,
@@ -152,31 +153,69 @@ export class WooCommerceClient {
               details: dbError
             }
           };
+        } else {
+          return {
+            success: false,
+            error: {
+              code: 'UNKNOWN_ERROR',
+              message: 'Une erreur inconnue est survenue lors de la sauvegarde',
+              details: dbError
+            }
+          };
         }
+      }
 
-      } catch (error) {
-        clearTimeout(timeoutId);
-        console.error('Error in API request:', error);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error in createWooCommerceSite:', error);
         return {
           success: false,
           error: {
-            code: 'API_ERROR',
-            message: error instanceof Error ? error.message : 'Une erreur inconnue est survenue',
+            code: 'WOOCOMMERCE_API_ERROR',
+            message: error.message,
+            details: error
+          }
+        };
+      } else {
+        console.error('Unknown error in createWooCommerceSite:', error);
+        return {
+          success: false,
+          error: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Une erreur inconnue est survenue',
             details: error
           }
         };
       }
+    }
+  }
 
-    } catch (error) {
-      console.error('Error in createWooCommerceSite:', error);
+  async checkSiteStatus(taskId: string): Promise<{
+    status: string;
+    completed: boolean;
+    error?: string;
+    consumerKey?: string;
+    consumerSecret?: string;
+  }> {
+    const statusUrl = `http://51.159.99.74:7999/v3/instance_status/${taskId}`;
+    
+    try {
+      const response = await fetch(statusUrl);
+      if (!response.ok) {
+        throw new Error(`Status check failed: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
       return {
-        success: false,
-        error: {
-          code: 'WOOCOMMERCE_API_ERROR',
-          message: error instanceof Error ? error.message : 'Une erreur inconnue est survenue',
-          details: error
-        }
+        status: data.status,
+        completed: data.completed || false,
+        error: data.error,
+        consumerKey: data.consumerKey,
+        consumerSecret: data.consumerSecret
       };
+    } catch (error) {
+      console.error('Error checking site status:', error);
+      throw error;
     }
   }
 }

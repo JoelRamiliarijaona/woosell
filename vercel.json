@@ -1,23 +1,7 @@
 {
-  "version": 2,
   "functions": {
-    "src/app/api/sites/route.ts": {
-      "maxDuration": 10
-    },
-    "src/app/api/sites/[siteId]/route.ts": {
-      "maxDuration": 10
-    },
-    "src/app/api/billing/route.ts": {
-      "maxDuration": 10
-    },
-    "src/app/api/woocommerce/webhook/route.ts": {
-      "maxDuration": 10
-    },
-    "src/app/api/admin/clear-collections/route.ts": {
-      "maxDuration": 10
-    },
-    "src/app/api/auth/[...nextauth]/route.ts": {
-      "maxDuration": 10
+    "src/app/api/**/*": {
+      "maxDuration": 2100
     }
   },
   "headers": [
@@ -26,7 +10,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "no-store, must-revalidate"
+          "value": "no-store, max-age=0"
         }
       ]
     }
