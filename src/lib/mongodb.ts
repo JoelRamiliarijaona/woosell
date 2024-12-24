@@ -18,38 +18,25 @@ mongoose.set('strictQuery', true);
 
 // Fonction pour se connecter à MongoDB avec mongoose
 async function connectWithMongoose() {
+  // Skip la connexion pendant le build
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return;
+  }
+  
   try {
-    if (!process.env.MONGODB_URI && process.env.NODE_ENV === 'production') {
-      throw new Error('Please add your Mongo URI to environment variables');
-    }
-    
-    await mongoose.connect(uri, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
+    await mongoose.connect(uri, options);
     console.log('Mongoose connected successfully');
-    
-    // Écouter les événements de connexion
-    mongoose.connection.on('error', (err) => {
-      console.error('Mongoose connection error:', err);
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      console.warn('Mongoose disconnected, attempting to reconnect...');
-      connectWithMongoose();
-    });
-
-  } catch (err) {
-    console.error('Error connecting to MongoDB with Mongoose:', err);
-    // Réessayer après 5 secondes
-    setTimeout(connectWithMongoose, 5000);
+  } catch (error) {
+    console.error('Error connecting to MongoDB with Mongoose:', error);
   }
 }
 
-// Démarrer la connexion
-connectWithMongoose();
+// Démarrer la connexion seulement si ce n'est pas un build
+if (process.env.NEXT_PHASE !== 'phase-production-build') {
+  connectWithMongoose();
+}
 
+// En mode développement, réutiliser la connexion entre les rechargements
 if (process.env.NODE_ENV === 'development') {
   const globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>;
@@ -66,16 +53,18 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 export async function getMongoDb(): Promise<Db> {
+  // Skip la connexion pendant le build
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return {} as Db;
+  }
+  
   try {
     const client = await clientPromise;
-    const db = client.db();
-    console.log('Successfully connected to MongoDB database');
-    return db;
+    return client.db();
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);
     throw error;
   }
 }
 
-// Export a module-scoped MongoClient promise
 export default clientPromise;

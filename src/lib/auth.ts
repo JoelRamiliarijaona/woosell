@@ -74,6 +74,11 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async signIn({ profile }) {
+      // Skip pendant le build
+      if (process.env.NEXT_PHASE === 'phase-production-build') {
+        return true;
+      }
+
       try {
         const keycloakProfile = profile as KeycloakProfile;
         if (!keycloakProfile?.sub) {
