@@ -11,8 +11,7 @@ import {
   Chip,
   CardActionArea,
   Tooltip,
-  Badge,
-  CircularProgress
+  Badge
 } from '@mui/material';
 import { 
   Language, 

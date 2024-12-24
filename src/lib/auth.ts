@@ -1,5 +1,5 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import type { NextAuthOptions, User } from 'next-auth';
+import type { NextAuthOptions } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import KeycloakProvider from 'next-auth/providers/keycloak';
 import { getMongoDb } from './mongodb';

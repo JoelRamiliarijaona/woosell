@@ -43,11 +43,6 @@ export async function GET(request: Request) {
       userId: user.sub
     });
 
-    // Récupérer tous les sites de l'utilisateur
-    const sites = await db.collection<Site>('sites')
-      .find({ userId: user.sub })
-      .toArray();
-
     // Calculer le total des revenus et des commandes
     const totalOrders = billing?.usage?.orderCount || 0;
 
