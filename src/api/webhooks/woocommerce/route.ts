@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getMongoDb } from '@/lib/mongodb';
 import logger, { logWebhookError } from '@/lib/logger';
-import { verifyWooCommerceWebhook } from '@/app/api/woocommerce/webhook/route';
 import { Site, Order, Notification, ApiResponse } from '@/types';
 import { ObjectId, OptionalId } from 'mongodb';
+import { verifyWooCommerceWebhook } from '@/lib/webhookUtils';
 
 
 interface WooCommerceWebhookOrder {
