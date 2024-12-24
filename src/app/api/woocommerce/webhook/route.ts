@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import crypto from 'crypto';
 import { getMongoDb } from '@/lib/mongodb';
 import { WooCommerceWebhookPayload } from '@/types/woocommerce';
 import { ObjectId } from 'mongodb';
 import { ApiResponse } from '@/types';
+import { verifyWooCommerceWebhook } from '@/lib/webhookUtils';
 
 const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
-
-// Fonction pour vérifier la signature du webhook
-export function verifyWooCommerceWebhook(payload: string, signature: string): boolean {
-  if (!WEBHOOK_SECRET) return false;
-  
-  const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
-  const digest = hmac.update(payload).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
-}
 
 export async function POST(request: NextRequest) {
   try {
