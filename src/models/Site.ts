@@ -41,10 +41,6 @@ const siteSchema = new Schema<ISite>({
     type: String, 
     required: true 
   },
-  productType: { 
-    type: String, 
-    required: true 
-  },
   status: { 
     type: String, 
     enum: ['creating', 'active', 'suspended', 'deleted'],

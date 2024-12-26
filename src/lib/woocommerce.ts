@@ -71,6 +71,26 @@ export class WooCommerceClient {
         type: "Shop"
       };
 
+      // Créer le site dans la base de données
+      const site = new SiteModel({
+        storeId: siteData.domain,
+        type: 'shop',
+        apiHost: `https://${siteData.domain}`,
+        apiKey: '',
+        apiSecret: '',
+        name: siteData.name,
+        provider: 'woo',
+        userId: siteData.userId,
+        status: 'active',
+        createdAt: new Date(),
+        stats: {
+          orderCount: 0,
+          revenue: 0,
+          lastSync: new Date()
+        }
+      });
+      await site.save();
+
       console.log('Starting WooCommerce site creation...');
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -106,64 +126,22 @@ export class WooCommerceClient {
       const data = await response.json();
       console.log('API Response:', data);
 
-      // Créer le site dans la base de données
-      const site = new SiteModel({
-        storeId: siteData.domain,
-        type: 'shop',
-        apiHost: `https://${siteData.domain}`,
-        apiKey: data.consumerKey || '',
-        apiSecret: data.consumerSecret || '',
-        name: siteData.name,
-        provider: 'woo',
-        userId: siteData.userId,
-        status: 'active',
-        createdAt: new Date(),
-        stats: {
-          orderCount: 0,
-          revenue: 0,
-          lastSync: new Date()
-        }
-      });
-
-      try {
-        await site.save();
-        console.log('Site saved to database:', site);
-
-        return {
-          success: true,
-          data: {
-            storeId: site.storeId,
-            consumerKey: data.consumerKey || '',
-            consumerSecret: data.consumerSecret || '',
-            _id: site._id.toString(),
-            name: site.name,
-            domain: siteData.domain,
-            stats: site.stats
+      return {
+        success: true,
+        data: {
+          storeId: data.storeId,
+          consumerKey: data.consumerKey,
+          consumerSecret: data.consumerSecret,
+          _id: data._id,
+          name: siteData.name,
+          domain: siteData.domain,
+          stats: {
+            orderCount: 0,
+            revenue: 0,
+            lastSync: null
           }
-        };
-
-      } catch (dbError: unknown) {
-        if (dbError instanceof Error) {
-          console.error('Error saving site to database:', dbError);
-          return {
-            success: false,
-            error: {
-              code: 'DATABASE_ERROR',
-              message: 'Erreur lors de la sauvegarde du site',
-              details: dbError
-            }
-          };
-        } else {
-          return {
-            success: false,
-            error: {
-              code: 'UNKNOWN_ERROR',
-              message: 'Une erreur inconnue est survenue lors de la sauvegarde',
-              details: dbError
-            }
-          };
         }
-      }
+      };
 
     } catch (error: unknown) {
       if (error instanceof Error) {
